@@ -14,6 +14,7 @@
  */
 
 #if 1
+#define NO_SVCPRINT
 #define DEBUGf(...)
 #else
 extern void Printf(char *format,...);

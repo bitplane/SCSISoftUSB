@@ -40,6 +40,8 @@
 #include "swis.h"
 #include "debug.h"
 
+#ifndef NO_SVCPRINT
+
 #ifndef NULL
 # define NULL	((void *)0)
 #endif
@@ -290,6 +292,8 @@ void Printf(char *format, ...)
     }
 #endif /* USETUBE */
 }
+
+#endif
 
 /**********************************************************************/
 
