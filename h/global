@@ -116,6 +116,7 @@ typedef struct my_usb_device
   
   void *softc;
   
+  uint32_t current_fill;  
   pipe_block_t *current_pipe;
   pipe_block_t pipe[3 /* == UMASS_NEP */];
   scatter_entry_t fake_list;         /* for making a scatter list when there wan't one */
@@ -159,8 +160,9 @@ extern void *global_PrivateWord; /* so we don't have to worry about passing pw a
 extern MessagesFD global_MessageFD; /* message file descriptor */
 extern my_usb_device_t *global_DeviceList; /* list of usb device info */
 extern my_usb_device_t *global_TickerList; /* list of devices using TickerV */
-
-
+#ifdef UMASS_DEBUG
+extern char *states[];
+#endif
 /*****************************************************************************
 * Function prototypes
 *****************************************************************************/

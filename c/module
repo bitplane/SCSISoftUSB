@@ -31,6 +31,8 @@
 /*****************************************************************************
 * Include header files
 *****************************************************************************/
+#include <stdio.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
@@ -46,7 +48,7 @@
 #include "USB/USBDevFS.h"
 
 #include "global.h"
-#include "glue.h"
+#include "glue.h"                           
 #include "modhdr.h"
 #include "resmess.h"
 
@@ -76,7 +78,7 @@
 * Function prototypes - Private to this file
 *****************************************************************************/
 static uint32_t RegisterSCSIDevice(void *device);
-static void DeregisterSCSIDevice(void *device, uint32_t scsi_driver_handle);
+//static void DeregisterSCSIDevice(void *device, uint32_t scsi_driver_handle);
 static _kernel_oserror *SearchForDevices(void);
 static _kernel_oserror *CheckConnectedDevice(const USBServiceCall *service_call_block);
 static _kernel_oserror *CheckDisconnectedDevice(const char *device_name);
@@ -123,14 +125,19 @@ _kernel_oserror *module_Init(const char *cmd_tail, int podule_base, void *pw)
   IGNORE(cmd_tail);
   IGNORE(podule_base);
   
-  debug_initialise("SCSISoftUSB", "null:", "");
-  debug_atexit();
-  debug_set_taskname_prefix(false);
-  debug_set_area_level_prefix(true);
-  debug_set_area_pad_limit(0);
-  debug_set_device(NULL_OUTPUT);
-  debug_set_raw_device(NULL_OUTPUT);
-  debug_set_trace_device(NULL_OUTPUT);
+  debug_initialise("SCSISoftUSB", "null:", 0);
+//  debug_set_taskname_prefix(true);
+//  debug_set_area_level_prefix(true);
+//  debug_set_area_pad_limit(0);
+    debug_set_unbuffered_files (TRUE);
+    debug_set_stamp_debug (TRUE);
+    debug_set_device(    DEBUGIT_OUTPUT);
+//    debug_set_device(    PRINTF_OUTPUT);
+//  debug_set_raw_device(  DEBUGIT_OUTPUT);
+//  debug_set_trace_device(DEBUGIT_OUTPUT);
+//  debug_set_device(NULL_OUTPUT);
+//  debug_set_raw_device(NULL_OUTPUT);
+//  debug_set_trace_device(NULL_OUTPUT);
   
   global_PrivateWord = pw;
   
@@ -156,8 +163,6 @@ _kernel_oserror *module_Init(const char *cmd_tail, int podule_base, void *pw)
   {
     MessagesOpen = true;
 #endif
-    
-    e = SearchForDevices();
   }
   if (!e)
   {
@@ -221,6 +226,8 @@ _kernel_oserror *module_CallbackFromInit(_kernel_swi_regs *r, void *pw)
 {
   IGNORE(r);
   IGNORE(pw);
+  /* lets see what is there .. */
+  SearchForDevices();
   return NULL;
 }
 
@@ -251,13 +258,12 @@ _kernel_oserror *module_Final(int fatal, int podule, void *pw)
   
   /* For safety, ensure we're no longer on TickerV */
   _kernel_irqs_off();
-  for (my_usb_device_t *device = global_TickerList; device != NULL; device = device->next_ticker)
-  {
-    _swix(OS_Release, _INR(0,2),
-          TickerV,
-          module_tickerv_handler,
-          global_PrivateWord);
-  }
+
+  global_TickerList=NULL;
+  _swix(OS_Release, _INR(0,2),
+        TickerV,
+        module_tickerv_handler,
+        global_PrivateWord);
   _kernel_irqs_on();
 
   if (!e)
@@ -534,7 +540,7 @@ static _kernel_oserror *SearchForDevices(void)
 *  NONE
 *
 * Returns
-*  NULL if successful; otherwise pointer to error block
+*  NULL 
 *****************************************************************************/
 static _kernel_oserror *CheckConnectedDevice(const USBServiceCall *service_call_block)
 {
@@ -556,11 +562,15 @@ static _kernel_oserror *CheckConnectedDevice(const USBServiceCall *service_call_
     else if (((usb_descriptor_t *)ptr)->bDescriptorType == UDESC_INTERFACE)
     {
       const usb_interface_descriptor_t *interface = (const usb_interface_descriptor_t *) ptr;
-      if (interface->bInterfaceClass == 8 /* mass storage class */ &&
-          interface->bInterfaceSubClass == 6 /* SCSI */ &&
-         (interface->bInterfaceProtocol == 0 /* control/bulk/interrupt with command completion interrupt */ ||
-          interface->bInterfaceProtocol == 1 /* control/bulk/interrupt without command completion interrupt */ ||
-          interface->bInterfaceProtocol == 0x50 /* bulk-only */))
+      if (interface->bInterfaceClass == 8          /* mass storage class */
+      && (interface->bInterfaceSubClass == 6        /* SCSI  */
+          || interface->bInterfaceSubClass == 5     /* floppy */
+         ) 
+      && (interface->bInterfaceProtocol == 0       /* control/bulk/interrupt with command completion interrupt */
+          || interface->bInterfaceProtocol == 1    /* control/bulk/interrupt without command completion interrupt  */
+          || interface->bInterfaceProtocol == 0x50 /* bulk-only */
+          )
+         )
       {
         my_usb_device_t *device = (my_usb_device_t *)((char *) calloc(1, sizeof *device) - 4);
         if (device != NULL)
@@ -737,10 +747,29 @@ static _kernel_oserror *RemoveAllDevices(void)
 {
   for (my_usb_device_t *device = global_DeviceList; device != NULL; device = global_DeviceList)
   {
+    
     device->dying = true;
     glue_DetachDevice(device);
     DeregisterSCSIDevice(device, device->scsi_driver_handle);
     global_DeviceList = device->next;
+    char buf[32]; /* *USBReset + sizeof(my_usb_device.devicefs_name) */
+    char *p=device->devicefs_name;
+    int i;
+    for(i=0;i<32;i++)
+    {
+      if(isalpha(*p))
+      {
+        buf[i]=*(p++);
+      }
+      else
+      {
+        buf[i] = 0;
+        break;
+      }
+    }
+    strcat(buf,"Reset ");strcat(buf,p);
+    dprintf(("",buf));
+    _kernel_oscli(buf);
     free((char *)device + 4);
   }
   return NULL;
@@ -827,7 +856,7 @@ _kernel_oserror *module_SCSIHandler(_kernel_swi_regs *r, void *pw)
 /*****************************************************************************
 * module_TickerVHandler
 *
-* TickerV handler
+* TickerV handler and callback processor
 *
 * Assumptions
 *  NONE
@@ -859,7 +888,6 @@ _kernel_oserror *module_TickerVHandler(_kernel_swi_regs *r, void *pw)
   semaphore = false;
   return NULL;
 }
-
 /*****************************************************************************
 * module_UpCallVHandler
 *

@@ -17,7 +17,11 @@
 
 #ifndef DEBUGGING
 #define NO_SVCPRINT
+#ifdef  UMASS_DEBUG
+#define DEBUGf	 logprintf 
+#else
 #define DEBUGf(...)
+#endif
 #else
 extern void Printf(char *format,...);
 #define DEBUGf Printf

@@ -45,7 +45,8 @@
 
 #ifdef UMASS_DEBUG
 #define DIF(m, x)	if (umassdebug & (m)) do { x ; } while (0)
-#define DPRINTF(m, x)	if (umassdebug & (m)) logprintf x
+#define DPRINTF(m, x)	if (umassdebug ) logprintf x
+//#define DPRINTF(m, x)	if (umassdebug & (m)) logprintf x
 #define UDMASS_UPPER	0x00008000	/* upper layer */
 #define UDMASS_GEN	0x00010000	/* general */
 #define UDMASS_SCSI	0x00020000	/* scsi */
@@ -204,6 +205,7 @@ struct umass_softc {
 	u_int8_t		sc_epaddr[UMASS_NEP];
 #ifdef __riscos
         u_int16_t               sc_maxpacket[UMASS_NEP];
+        char                    *scbulkoutbuf;
 #endif
 	usbd_pipe_handle	sc_pipe[UMASS_NEP];
 	usb_device_request_t	sc_req;
@@ -317,6 +319,7 @@ struct umass_softc {
 	int			sc_xfer_flags;
 	char			sc_dying;
 	int			sc_refcnt;
+        int                     sc_sense;
 
 	struct umassbus_softc	*bus;		 /* bus dependent data */
 };

@@ -51,8 +51,9 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __riscos
 #include <sys/param.h>
+
+#ifndef __riscos
 #include <sys/systm.h>
 #include <sys/device.h>
 #include <sys/buf.h>
@@ -105,14 +106,14 @@ Static const struct umass_quirk umass_quirks[] = {
 	  NULL, NULL
 	},
 
-	{ { USB_VENDOR_EASYDISK, USB_PRODUCT_EASYDISK_EASYDISK },
-	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
-	  0,
-	  PQUIRK_NOMODESENSE,
-	  UMATCH_VENDOR_PRODUCT,
-	  NULL, NULL
-	},
-
+//	{ { USB_VENDOR_EASYDISK, USB_PRODUCT_EASYDISK_EASYDISK },
+//	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
+//	  0,
+//	  PQUIRK_NOMODESENSE,
+//	  UMATCH_VENDOR_PRODUCT,
+//	  NULL, NULL
+//	},
+//
 	{ { USB_VENDOR_FUJIPHOTO, USB_PRODUCT_FUJIPHOTO_MASS0100 },
 	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
 	  UMASS_QUIRK_NO_START_STOP,
@@ -427,13 +428,16 @@ Static const struct umass_quirk umass_quirks[] = {
 };
 
 #ifdef __riscos
+#ifdef usb_lookup
+#undef usb_lookup
+#endif
 static const struct umass_quirk *usb_lookup(const struct umass_quirk *table, u_int16_t vendor, u_int16_t product)
 {
 	int count = sizeof umass_quirks / sizeof *umass_quirks;
 	while (count-- > 0)
 	{
-		if (table->uq_dev.vendor == vendor &&
-		    table->uq_dev.product == product) return table;
+		if (table->uq_dev.ud_vendor == vendor &&
+		    table->uq_dev.ud_product == product) return table;
 		table++;
 	}
 	return NULL;

@@ -67,12 +67,12 @@
 typedef usbd_status (*umass_init_quirk)(struct umass_softc *);
 typedef void (*umass_fixup_quirk)(struct umass_softc *);
 
-#ifdef __riscos
-struct usb_devno {
-	u_int16_t		vendor;
-	u_int16_t		product;
-};
-#endif
+//#ifdef __riscos
+//struct usb_devno {
+//	u_int16_t		vendor;
+//	u_int16_t		product;
+//};
+//#endif
 
 struct umass_quirk {
 	struct usb_devno	uq_dev;

@@ -24,14 +24,14 @@
 COMPONENT = SCSISoftUSB
 TARGET    = SCSISoftUSB
 DIRS      = local_dirs
-CFLAGS    = -ffah -wp -wc -we -zM -zps1 -ITCPIPLibs:,C:USB -DDISABLE_PACKED ${DEFINES}
+CFLAGS    = -ffah -wp -wc -we -zM -zps1 -ITCPIPLibs:,C:USB -DDISABLE_PACKED -D_KERNEL ${DEFINES}
 RAM_OBJS  = o.module ${OBJS}
 ROM_OBJS  = o.moduleROM ${OBJS}
 OBJS      =            o.svcprint  o.glue  o.umass  o.umass_quirks  o.global o.asm o.modhdr #o.resmess
 DBG_OBJS  = do.module do.svcprint do.glue do.umass do.umass_quirks do.global o.asm o.modhdr #o.resmess
 LIBDIR    = <Lib$Dir>
 LIBS      = 
-DBG_LIBS  = ${LIBS} ${LIBDIR}.DebugLib.o.debuglibzm TCPIPLibs:o.socklib5zm TCPIPLibs:o.inetlibzm
+DBG_LIBS  = ${DEBUGLIB} ${LIBS} ${MODMALLOCLIB} ${WILDLIB} ${DDTLIB} ${DESKLIB} ${CALLXLIB} ${ASMUTILS} ${TBOXLIBS} ${LIBDIR}.DebugLib.o.debuglibzm TCPIPLibs:o.socklib5zm TCPIPLibs:o.inetlibzm
 DBG_MODULE = drm.${TARGET}
 EXPORTS   = 
 #MERGEDMDIR = o.${MACHINE}._Messages_
@@ -44,9 +44,11 @@ include Makefiles:RAMCModule
 include Makefiles:ROMCModule
 
 .SUFFIXES: .do
-.c.do:; ${CC} ${CFLAGS} -DDEBUGLIB -o $@ $<
+.c.do:; ${CC} ${CFLAGS} -DDEBUGLIB -DUMASS_DEBUG -o $@ $<
 
 local_dirs:
+        ${MKDIR} gpa
+        ${MKDIR} aif
         ${MKDIR} do
         ${MKDIR} o
 
@@ -61,11 +63,21 @@ ${EXPORTS}:
 #        ${RM} Messages${CMDHELP}
 #        @${ECHO} ${COMPONENT}: resource files copied
 
+aif.${COMPONENT}: ${RAM_OBJS} ${RAM_LIBS} ${CLIB} ${DIRS}
+        link -base 0 -aif -bin -d -o $@ ${RAM_OBJS} ${RAM_LIBS} ${CLIB}
+
+gpa.${COMPONENT}: aif.${COMPONENT}
+        togpa -s aif.${COMPONENT} $@
+
+
+
 clean:
         ${RM} Messages
         ${RM} h.modhdr
         ifthere linked then wipe linked ${WFLAGS}
         ifthere aof    then wipe aof    ${WFLAGS}
+        ifthere aif    then wipe aif    ${WFLAGS}
+        ifthere gpa    then wipe gpa    ${WFLAGS}
         ifthere drm    then wipe drm    ${WFLAGS}
         ifthere do     then wipe do     ${WFLAGS}
         ifthere rm     then wipe rm     ${WFLAGS}

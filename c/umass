@@ -166,8 +166,8 @@ __KERNEL_RCSID(0, "$NetBSD: umass.c,v 1.95 2003/02/16 23:14:06 augustss Exp $");
 #endif
 
 #ifdef UMASS_DEBUG
-int umassdebug = 0;
-
+#include <stdio.h>
+int umassdebug = 9;//;0
 char *states[TSTATE_STATES+1] = {
 	/* should be kept in sync with the list at transfer_state */
 	"Idle",
@@ -455,17 +455,26 @@ USB_ATTACH(umass)
 			break;
 		case UIPROTO_MASS_BBB:
 #ifdef __riscos
-		case UIPROTO_MASS_BBB_P:
+//		case UIPROTO_MASS_BBB_P:
 #else
 		case UIPROTO_MASS_BBB_OLD:
 #endif
 			sc->sc_wire = UMASS_WPROTO_BBB;
 			break;
 		default:
+#ifdef __riscos
 			DPRINTF(UDMASS_GEN,
 				("%s: Unsupported wire protocol %u\n",
 				USBDEVNAME(sc->sc_dev),
-				id->bInterfaceProtocol));
+				InterfaceProtocol
+				));
+#else
+			DPRINTF(UDMASS_GEN,
+				("%s: Unsupported wire protocol %u\n",
+				USBDEVNAME(sc->sc_dev),
+				id->bInterfaceProtocol
+				));
+#endif
 			USB_ATTACH_ERROR_RETURN;
 		}
 	}
@@ -495,10 +504,17 @@ USB_ATTACH(umass)
 			sc->sc_cmd = UMASS_CPROTO_RBC;
 			break;
 		default:
+#ifdef __riscos
 			DPRINTF(UDMASS_GEN,
 				("%s: Unsupported command protocol %u\n",
 				USBDEVNAME(sc->sc_dev),
-				id->bInterfaceSubClass));
+				InterfaceProtocol));
+#else
+			DPRINTF(UDMASS_GEN,
+				("%s: Unsupported command protocol %u\n",
+				USBDEVNAME(sc->sc_dev),
+				id->bInterfaceProtocol));
+#endif
 			USB_ATTACH_ERROR_RETURN;
 		}
 	}
@@ -546,6 +562,16 @@ USB_ATTACH(umass)
 #ifndef __riscos
 	printf("%s: using %s over %s\n", USBDEVNAME(sc->sc_dev), sCommand,
 	       sWire);
+
+        if (quirk != NULL && quirk->uq_init != NULL) {
+                err = (*quirk->uq_init)(sc);
+                if (err) {
+                        printf("%s: quirk init failed\n",
+                               USBDEVNAME(sc->sc_dev));
+                        umass_disco(sc);
+                        USB_ATTACH_ERROR_RETURN;
+                }
+        }
 
 	/*
 	 * In addition to the Control endpoint the following endpoints
@@ -1148,7 +1174,7 @@ umass_bbb_transfer(struct umass_softc *sc, int lun, const void *cmd, int cmdlen,
 	sc->cbw.bCBWLUN = lun;
 	sc->cbw.bCDBLength = cmdlen;
 	memcpy(sc->cbw.CBWCDB, cmd, cmdlen);
-
+DPRINTF(UDMASS_BBB,("\n here \n"));
 	DIF(UDMASS_BBB, umass_bbb_dump_cbw(sc, &sc->cbw));
 
 	/* store the details for the data transfer phase */
@@ -1219,9 +1245,19 @@ umass_bbb_state(
 	 * has been submitted you will find a 'return;'.
 	 */
 
+#ifdef __riscos
 	DPRINTF(UDMASS_BBB, ("%s: Handling BBB state %d (%s), xfer=%p, %s\n",
 		USBDEVNAME(sc->sc_dev), sc->transfer_state,
-		states[sc->transfer_state], xfer, usbd_errstr(RISCOSSTAR err)));
+		states[sc->transfer_state],
+		sc,
+		usbd_errstr(RISCOSSTAR err)));
+#else
+	DPRINTF(UDMASS_BBB, ("%s: Handling BBB state %d (%s), xfer=%p, %s\n",
+		USBDEVNAME(sc->sc_dev), sc->transfer_state,
+		states[sc->transfer_state],
+		xfer,
+		usbd_errstr(RISCOSSTAR err)));
+#endif
 
 	switch (sc->transfer_state) {
 
@@ -1852,10 +1888,15 @@ umass_cbi_state(
 	 * State handling for CBI transfers.
 	 */
 
+#ifdef __riscos
+	DPRINTF(UDMASS_CBI, ("%s: Handling CBI state %d (%s), xfer=%p, %s\n",
+		USBDEVNAME(sc->sc_dev), sc->transfer_state,
+		states[sc->transfer_state], sc, usbd_errstr(RISCOSSTAR err)));
+#else
 	DPRINTF(UDMASS_CBI, ("%s: Handling CBI state %d (%s), xfer=%p, %s\n",
 		USBDEVNAME(sc->sc_dev), sc->transfer_state,
 		states[sc->transfer_state], xfer, usbd_errstr(RISCOSSTAR err)));
-
+#endif
 	switch (sc->transfer_state) {
 
 	/***** CBI Transfer *****/
@@ -2095,12 +2136,16 @@ umass_cbi_state(
 				USBDEVNAME(sc->sc_dev),
 				sc->sbl.ufi.asc, sc->sbl.ufi.ascq));
 
-			if (sc->sbl.ufi.asc == 0 && sc->sbl.ufi.ascq == 0)
+                        if ((sc->sbl.ufi.asc == 0 && sc->sbl.ufi.ascq == 0) ||
+                            sc->sc_sense)
 				status = STATUS_CMD_OK;
 			else
 				status = STATUS_CMD_FAILED;
 
 			/* No sense, command successful */
+                        sc->transfer_state = TSTATE_IDLE;
+                        sc->transfer_cb(sc, sc->transfer_priv,
+                            sc->transfer_datalen - sc->transfer_actlen, status);
 		} else {
 			/* Command Interrupt Data Block */
 			DPRINTF(UDMASS_CBI, ("%s: type=0x%02x, value=0x%02x\n",
@@ -2124,7 +2169,7 @@ umass_cbi_state(
 
 				sc->transfer_state = TSTATE_IDLE;
 				sc->transfer_cb(sc, sc->transfer_priv,
-						sc->transfer_datalen,
+                                                sc->transfer_datalen,
 						err);
 			}
 		}
@@ -2150,12 +2195,21 @@ umass_cbi_state(
 		return;
 
 	case TSTATE_CBI_SCLEAR:
-		if (RISCOSSTAR err)	/* should not occur */
+		if (RISCOSSTAR err){	/* should not occur */
 #ifndef __riscos
 			printf("%s: CBI intr-in stall clear failed, %s\n",
 			       USBDEVNAME(sc->sc_dev), usbd_errstr(RISCOSSTAR err));
 #endif
-
+                        umass_cbi_reset(sc, STATUS_WIRE_FAILED
+#ifdef __riscos
+			, err
+#endif
+			);                        
+                } else {
+                        sc->transfer_state = TSTATE_IDLE;
+                        sc->transfer_cb(sc, sc->transfer_priv,
+                            sc->transfer_datalen, STATUS_CMD_FAILED);
+                }
 		/* Something really bad is going on. Reset the device */
 		umass_cbi_reset(sc, STATUS_CMD_FAILED
 #ifdef __riscos
@@ -2311,7 +2365,7 @@ Static void
 umass_bbb_dump_csw(struct umass_softc *sc, umass_bbb_csw_t *csw)
 {
 	int sig = UGETDW(csw->dCSWSignature);
-	int tag = UGETW(csw->dCSWTag);
+        int tag = UGETDW(csw->dCSWTag);
 	int res = UGETDW(csw->dCSWDataResidue);
 	int status = csw->bCSWStatus;
 
