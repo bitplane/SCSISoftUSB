@@ -13,7 +13,9 @@
  * limitations under the License.
  */
 
-#if 1
+#undef DEBUGGING
+
+#ifndef DEBUGGING
 #define NO_SVCPRINT
 #define DEBUGf(...)
 #else

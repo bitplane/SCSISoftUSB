@@ -41,6 +41,7 @@
 
 #include "Global/Services.h"
 #include "Global/RISCOS.h"
+#include "Interface/SCSIErr.h"
 #include "DebugLib/DebugLib.h"
 #include "USB/USBDevFS.h"
 
@@ -687,23 +688,29 @@ static _kernel_oserror *CheckConnectedDevice(const USBServiceCall *service_call_
 static _kernel_oserror *CheckDisconnectedDevice(const char *device_name)
 {
   my_usb_device_t *prev = NULL;
-  for (my_usb_device_t *device = global_DeviceList; device != NULL; device = device->next)
+  my_usb_device_t *next;
+  for (my_usb_device_t *device = global_DeviceList; device != NULL; device = next)
   {
+    next = device->next;
     if (strcmp(device->devicefs_name, device_name) == 0)
     {
+      device->dying = true; /* no more commands can be started */
+      glue_DetachDevice(device);
       DeregisterSCSIDevice(device, device->scsi_driver_handle);
       if (prev == NULL)
       {
-        global_DeviceList = device->next;
+        global_DeviceList = next;
       }
       else
       {
-        prev->next = device->next;
+        prev->next = next;
       }
-      glue_DetachDevice(device);
       free((char *)device + 4);
     }
-    prev = device;
+    else
+    {
+      prev = device;
+    }
   }
   return NULL;
 }
@@ -729,9 +736,10 @@ static _kernel_oserror *RemoveAllDevices(void)
 {
   for (my_usb_device_t *device = global_DeviceList; device != NULL; device = global_DeviceList)
   {
+    device->dying = true;
+    glue_DetachDevice(device);
     DeregisterSCSIDevice(device, device->scsi_driver_handle);
     global_DeviceList = device->next;
-    glue_DetachDevice(device);
     free((char *)device + 4);
   }
   return NULL;
@@ -766,7 +774,7 @@ _kernel_oserror *module_SCSIHandler(_kernel_swi_regs *r, void *pw)
       break;
       
     case 1: /* Reset bus */
-      assert(false /* shouldn't happen */);
+      e = (_kernel_oserror *)(ErrorNumber_SCSI_SWIunkn & 0xFF); /* shouldn't happen */
       break;
       
     case 2: /* Reset device */
@@ -775,25 +783,41 @@ _kernel_oserror *module_SCSIHandler(_kernel_swi_regs *r, void *pw)
       break;
       
     case 4: /* Foreground op */
-      assert(false /* shouldn't happen */);
+      e = (_kernel_oserror *)(ErrorNumber_SCSI_SWIunkn & 0xFF); /* shouldn't happen */
       break;
       
     case 5: /* Background op */
-      e = glue_DoCommand((my_usb_device_t *)r->r[8],
-                         (r->r[0] >> 10) & 0x3F,
-                         r->r[0] & (3 << 24),
-                         (char *) r->r[2],
-                         r->r[1],
-                         (scatter_entry_t *) r->r[3],
-                         r->r[4],
-                         (void (*)(void)) r->r[6],
-                         (void *) r->r[5],
-                         (void *) r->r[7]);
-      r->r[0] = -1; /* operation still in progress */
+    {
+      my_usb_device_t *device = (my_usb_device_t *)r->r[8];
+//      uint32_t lun = (r->r[0] >> 10) & 0x3F;
+      uint32_t lun = (r->r[0] >> 5) & 0x7;
+      if (lun > device->maxlun)
+      {
+        e = (_kernel_oserror *)(ErrorNumber_SCSI_NoDevice & 0xFF);
+      }
+      else
+      {
+        e = glue_DoCommand(device,
+                           lun,
+                           r->r[0] & (3 << 24),
+                           (char *) r->r[2],
+                           r->r[1],
+                           (scatter_entry_t *) r->r[3],
+                           r->r[4],
+                           (void (*)(void)) r->r[6],
+                           (void *) r->r[5],
+                           (void *) r->r[7]);
+        r->r[0] = -1; /* operation still in progress */
+      }
       break;
+    }
       
     case 6: /* Cancel background operation */
       glue_ResetDevice((my_usb_device_t *)r->r[8]);
+      break;
+      
+    default: /* Unknown reason code */
+      e = (_kernel_oserror *)(ErrorNumber_SCSI_SWIunkn & 0xFF);
       break;
   }
   return e;

@@ -93,6 +93,8 @@ typedef struct my_usb_device
   
   struct my_usb_device *next;
   
+  bool dying;
+  
   uint8_t interface;
   uint8_t alternate;
   uint8_t subclass;

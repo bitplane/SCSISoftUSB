@@ -224,9 +224,9 @@ Static
 #endif
   umass_clear_endpoint_stall(struct umass_softc *sc, int endpt
 #ifndef __riscos
-				, usbd_xfer_handle xfer
+  , usbd_xfer_handle xfer
 #endif
-				);
+  );
 #if 0
 Static void umass_reset(struct umass_softc *sc,	transfer_cb_f cb, void *priv);
 #endif
@@ -961,44 +961,25 @@ umass_setup_ctrl_transfer(struct umass_softc *sc, usb_device_request_t *req, voi
 #endif
 }
 
-Static
-#ifdef __riscos
-usbd_status
-#else
-void
-#endif
-umass_clear_endpoint_stall(struct umass_softc *sc, int endpt
 #ifndef __riscos
-	, usbd_xfer_handle xfer
-#endif
-	)
+Static void umass_clear_endpoint_stall(struct umass_softc *sc, int endpt, usbd_xfer_handle xfer)
 {
-#ifndef __riscos
 	if (sc->sc_dying)
 		return;
-#endif
 
 	DPRINTF(UDMASS_BBB, ("%s: Clear endpoint 0x%02x stall\n",
 		USBDEVNAME(sc->sc_dev), sc->sc_epaddr[endpt]));
 
-#ifndef __riscos /* can't see an easy way to get at this routine - can we do without? */
 	usbd_clear_endpoint_toggle(sc->sc_pipe[endpt]);
-#endif
 
 	sc->sc_req.bmRequestType = UT_WRITE_ENDPOINT;
 	sc->sc_req.bRequest = UR_CLEAR_FEATURE;
 	USETW(sc->sc_req.wValue, UF_ENDPOINT_HALT);
 	USETW(sc->sc_req.wIndex, sc->sc_epaddr[endpt]);
 	USETW(sc->sc_req.wLength, 0);
-#ifdef __riscos
-	return
-#endif
-	umass_setup_ctrl_transfer(sc, &sc->sc_req, NULL
-#ifndef __riscos
-				  , 0, 0, xfer
-#endif
-				  );
+	umass_setup_ctrl_transfer(sc, &sc->sc_req, NULL, 0, 0, xfer);
 }
+#endif
 
 #if 0
 Static void
@@ -1060,7 +1041,6 @@ umass_bbb_reset(struct umass_softc *sc, int transfer_status
 	USETW(sc->sc_req.wValue, 0);
 	USETW(sc->sc_req.wIndex, sc->sc_ifaceno);
 	USETW(sc->sc_req.wLength, 0);
-DEBUGf("About to do a bulk reset\n");
 #ifdef __riscos
 	*err =
 #endif
@@ -1069,7 +1049,6 @@ DEBUGf("About to do a bulk reset\n");
 				  , 0, 0, sc->transfer_xfer[XFER_BBB_RESET1]
 #endif
 				  );
-DEBUGf("Returned from bulk reset\n");
 }
 
 Static void

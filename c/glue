@@ -101,6 +101,7 @@ extern usbd_status usbd_close_pipe(usbd_pipe_handle pipe);
 * Function prototypes which umass.c thinks are private to itself but aren't really
 *****************************************************************************/
 extern usbd_status umass_setup_transfer(struct umass_softc *sc, usbd_pipe_handle pipeh, void *buffer, int buflen, int flags);
+extern usbd_status umass_clear_endpoint_stall(struct umass_softc *sc, int endpt);
 
 
 /*****************************************************************************
@@ -172,7 +173,19 @@ bool glue_AttachDevice(my_usb_device_t *device, uint8_t *maxlun)
 void glue_DetachDevice(my_usb_device_t *device)
 {
   DEBUGf("DetachDevice\n");
+  GetOffTickerV(device);
   struct umass_softc *softc = (struct umass_softc *)device->softc;
+  if (device->command_active && softc->transfer_priv != NULL)
+  {
+    DEBUGf("Calling SCSIdriver from DetachDevice\n");
+    asm_DoTransferCompleteCallback((_kernel_oserror *)(ErrorNumber_SCSI_Died & 0xFF),
+                                   0,
+                                   device->callback,
+                                   softc->transfer_datalen,
+                                   device->callback_pw,
+                                   device->callback_wp);
+    softc->transfer_priv = NULL; /* if we're interrupting ticker processing, no longer try to do a callback at end of ticker */
+  }
   umass_detach((struct device *)softc, 0);
 }
 
@@ -214,16 +227,15 @@ void glue_ResetBus(my_usb_device_t *device)
 void glue_ResetDevice(my_usb_device_t *device)
 {
   DEBUGf("ResetDevice\n");
+  if (device->dying) return;
   struct umass_softc *softc = (struct umass_softc *)device->softc;
   
-  bool callback_required;
   bool irqs_were_off = _kernel_irqs_disabled();
   if (!irqs_were_off) _kernel_irqs_off();
   if (!device->command_active)
   {
     softc->transfer_priv = NULL; /* definitely don't do a callback if we're not interrupting an ongoing operation */
-  }
-  callback_required = (softc->transfer_priv != NULL); /* ongoing operation may have been a reset too, or may not have initialised enough yet */
+  }                              /* (it may be null anyway, if ongoing operation was a reset too, has been detached, or hasn't initialised enough yet) */
   device->command_active = true; /* prevent any new commands from being started until we're done */
   device->ticker_semaphore = true; /* prevent TickerV from doing anything */
   if (!irqs_were_off) _kernel_irqs_on();
@@ -242,13 +254,16 @@ void glue_ResetDevice(my_usb_device_t *device)
   device->command_active = false;
   device->ticker_semaphore = false;
   /* Do callback if necessary */
-  DEBUGf("Calling SCSIdriver\n");
-  if (callback_required) asm_DoTransferCompleteCallback(device->callback_error,
-                                                        device->callback_status_byte,
-                                                        device->callback,
-                                                        device->callback_not_transferred,
-                                                        device->callback_pw,
-                                                        device->callback_wp);
+  if (softc->transfer_priv != NULL)
+  {
+    DEBUGf("Calling SCSIdriver from ResetDevice\n");
+    asm_DoTransferCompleteCallback(device->callback_error,
+                                   device->callback_status_byte,
+                                   device->callback,
+                                   device->callback_not_transferred,
+                                   device->callback_pw,
+                                   device->callback_wp);
+  }
   if (!irqs_were_off) _kernel_irqs_off();
   return;
 }
@@ -283,6 +298,7 @@ void glue_ResetDevice(my_usb_device_t *device)
 _kernel_oserror *glue_DoCommand(my_usb_device_t *device, uint32_t lun, uint32_t data_direction, const char *control_block, size_t control_block_length, scatter_entry_t *scatter_list, size_t transfer_length, void (*callback)(void), void *callback_pw, void *callback_wp)
 {
   DEBUGf("DoCommand\n");
+  if (device->dying) return (_kernel_oserror *)(ErrorNumber_SCSI_Died & 0xFF);
   struct umass_softc *softc = (struct umass_softc *)device->softc;
   
   bool irqs_were_off = _kernel_irqs_disabled();
@@ -331,13 +347,16 @@ _kernel_oserror *glue_DoCommand(my_usb_device_t *device, uint32_t lun, uint32_t 
     device->command_active = false;
     device->ticker_semaphore = false;
     /* Do callback */
-    DEBUGf("Calling SCSIdriver\n");
-    asm_DoTransferCompleteCallback(device->callback_error,
-                                   device->callback_status_byte,
-                                   device->callback,
-                                   device->callback_not_transferred,
-                                   device->callback_pw,
-                                   device->callback_wp);
+    if (softc->transfer_priv != NULL)
+    {
+      DEBUGf("Calling SCSIdriver from DoCommand\n");
+      asm_DoTransferCompleteCallback(device->callback_error,
+                                     device->callback_status_byte,
+                                     device->callback,
+                                     device->callback_not_transferred,
+                                     device->callback_pw,
+                                     device->callback_wp);
+    }
   }
   else
   {
@@ -393,7 +412,7 @@ void glue_Tick(my_usb_device_t *device)
     buffer_used = USED_SPACE(device->current_pipe->buffer);
     DEBUGf("USED_SPACE = %x\n", buffer_used);
     uint32_t maxpacket = device->current_pipe->maxpacket;
-    size_t buffer_free = BUFFER_SIZE - buffer_used;
+    size_t buffer_free = (BUFFER_SIZE - 1) - buffer_used;
     if (buffer_free < device->curr_transferlength)
     {
       /* Ensure we only send in packet-size chunks, until the last packet */
@@ -423,13 +442,16 @@ void glue_Tick(my_usb_device_t *device)
             buffer_used ++;
             device->curr_transferlength --;
             device->curr_offset ++;
-            while (device->curr_offset == device->curr_scatterlist->length)
+            if (device->curr_transferlength > 0)
             {
-              device->curr_scatterlist++;
-              device->curr_offset = 0;
-              if ((uint32_t) device->curr_scatterlist->start >= 0xFFFF00000u)
+              while (device->curr_offset == device->curr_scatterlist->length)
               {
-                device->curr_scatterlist = (scatter_entry_t *) ((char *) device->curr_scatterlist + (int32_t) device->curr_scatterlist->start);
+                device->curr_scatterlist++;
+                device->curr_offset = 0;
+                if ((uint32_t) device->curr_scatterlist->start >= 0xFFFF00000u)
+                {
+                  device->curr_scatterlist = (scatter_entry_t *) ((char *) device->curr_scatterlist + (int32_t) device->curr_scatterlist->start);
+                }
               }
             }
           }
@@ -444,21 +466,24 @@ void glue_Tick(my_usb_device_t *device)
         if (wholepacket_len > 0)
         {
           INSERT_BLOCK(device->current_pipe->buffer, device->curr_scatterlist->start + device->curr_offset, wholepacket_len);
+          contig_len -= wholepacket_len;
           buffer_free -= wholepacket_len;
           buffer_used += wholepacket_len;
           device->curr_transferlength -= wholepacket_len;
           device->curr_offset += wholepacket_len;
-          while (device->curr_offset == device->curr_scatterlist->length)
+          if (device->curr_transferlength > 0)
           {
-            device->curr_scatterlist++;
-            device->curr_offset = 0;
-            if ((uint32_t) device->curr_scatterlist->start >= 0xFFFF00000u)
+            while (device->curr_offset == device->curr_scatterlist->length)
             {
-              device->curr_scatterlist = (scatter_entry_t *) ((char *) device->curr_scatterlist + (int32_t) device->curr_scatterlist->start);
+              device->curr_scatterlist++;
+              device->curr_offset = 0;
+              if ((uint32_t) device->curr_scatterlist->start >= 0xFFFF00000u)
+              {
+                device->curr_scatterlist = (scatter_entry_t *) ((char *) device->curr_scatterlist + (int32_t) device->curr_scatterlist->start);
+              }
             }
           }
         }
-        contig_len -= wholepacket_len;
         
         while (contig_len > 0)
         {
@@ -468,13 +493,16 @@ void glue_Tick(my_usb_device_t *device)
           buffer_used ++;
           device->curr_transferlength --;
           device->curr_offset ++;
-          while (device->curr_offset == device->curr_scatterlist->length)
+          if (device->curr_transferlength > 0)
           {
-            device->curr_scatterlist++;
-            device->curr_offset = 0;
-            if ((uint32_t) device->curr_scatterlist->start >= 0xFFFF00000u)
+            while (device->curr_offset == device->curr_scatterlist->length)
             {
-              device->curr_scatterlist = (scatter_entry_t *) ((char *) device->curr_scatterlist + (int32_t) device->curr_scatterlist->start);
+              device->curr_scatterlist++;
+              device->curr_offset = 0;
+              if ((uint32_t) device->curr_scatterlist->start >= 0xFFFF00000u)
+              {
+                device->curr_scatterlist = (scatter_entry_t *) ((char *) device->curr_scatterlist + (int32_t) device->curr_scatterlist->start);
+              }
             }
           }
         }
@@ -503,13 +531,16 @@ void glue_Tick(my_usb_device_t *device)
         buffer_used -= contig_len;
         device->curr_transferlength -= contig_len;
         device->curr_offset += contig_len;
-        while (device->curr_offset == device->curr_scatterlist->length)
+        if (device->curr_transferlength > 0)
         {
-          device->curr_scatterlist++;
-          device->curr_offset = 0;
-          if ((uint32_t) device->curr_scatterlist->start >= 0xFFFF00000u)
+          while (device->curr_offset == device->curr_scatterlist->length)
           {
-            device->curr_scatterlist = (scatter_entry_t *) ((char *) device->curr_scatterlist + (int32_t) device->curr_scatterlist->start);
+            device->curr_scatterlist++;
+            device->curr_offset = 0;
+            if ((uint32_t) device->curr_scatterlist->start >= 0xFFFF00000u)
+            {
+              device->curr_scatterlist = (scatter_entry_t *) ((char *) device->curr_scatterlist + (int32_t) device->curr_scatterlist->start);
+            }
           }
         }
       }
@@ -555,13 +586,16 @@ void glue_Tick(my_usb_device_t *device)
   {
     device->command_active = false;
     GetOffTickerV(device);
-    DEBUGf("Calling SCSIdriver\n");
-    asm_DoTransferCompleteCallback(device->callback_error,
-                                   device->callback_status_byte,
-                                   device->callback,
-                                   device->callback_not_transferred,
-                                   device->callback_pw,
-                                   device->callback_wp);
+    if (softc->transfer_priv != NULL)
+    {
+      DEBUGf("Calling SCSIdriver from Tick, addr=%x err=%x r0=%x r4=%x r5=%x r12=%x\n", (int)device->callback, (int)device->callback_error, device->callback_status_byte, device->callback_not_transferred, (int)device->callback_pw, (int)device->callback_wp);
+      asm_DoTransferCompleteCallback(device->callback_error,
+                                     device->callback_status_byte,
+                                     device->callback,
+                                     device->callback_not_transferred,
+                                     device->callback_pw,
+                                     device->callback_wp);
+    }
   }
 }
 
@@ -741,7 +775,7 @@ static void GetOffTickerV(my_usb_device_t *device)
     else
     {
       prev = ptr;
-      ptr = ptr->next;
+      ptr = ptr->next_ticker;
     }
   }
   if (!irqs_were_off) _kernel_irqs_on();
@@ -950,6 +984,48 @@ usbd_status umass_setup_transfer(struct umass_softc *sc, usbd_pipe_handle pipeh,
   device->curr_transferlength = buflen;
   device->background_transfer_active = true;
   return USBD_NORMAL_COMPLETION;
+}
+
+/*****************************************************************************
+* umass_clear_endpoint_stall
+*
+* Performs the necessary actions to remove a stall condition from an endpoint.
+* This is a replacement for one of the routines in umass.c, but it fits better
+* with the other routines in this source file.
+*
+* Assumptions
+*  NONE
+*
+* Inputs
+*  sc:     the BSD-style struct describing the device
+*  endpt:  the endpoint that is stalled (index into our array of pipes)
+*
+* Outputs
+*  NONE
+*
+* Returns
+*  BSD-style status code
+*****************************************************************************/
+usbd_status umass_clear_endpoint_stall(struct umass_softc *sc, int endpt)
+{
+  bool irqs_were_off = _kernel_irqs_disabled();
+  if (!irqs_were_off) _kernel_irqs_off();
+  my_usb_device_t *device = global_DeviceList;
+  while (device != NULL)
+  {
+    if (device->softc == sc) break;
+    device = device->next;
+  }
+  if (!irqs_were_off) _kernel_irqs_on();
+  if (device == NULL) return USBD_INVAL;
+  
+  _kernel_oserror *e = _swix(DeviceFS_CallDevice, _INR(0,2),
+                             DeviceCall_ExternalBase + 5,
+                             device->devicefs_name,
+                             device->pipe[endpt].handle);
+  DEBUGf("New device call returned %s\n", e ? e->errmess : "no error");
+  if (!e) return USBD_NORMAL_COMPLETION;
+  return USBD_IOERROR;
 }
 
 /*****************************************************************************
