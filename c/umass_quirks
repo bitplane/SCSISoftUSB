@@ -163,7 +163,6 @@ Static const struct umass_quirk umass_quirks[] = {
 	},
 #endif
 
-#ifndef __riscos
 	{ { USB_VENDOR_IODATA2, USB_PRODUCT_IODATA2_USB2SC },
 	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
 	  0,
@@ -171,7 +170,6 @@ Static const struct umass_quirk umass_quirks[] = {
 	  UMATCH_VENDOR_PRODUCT,
 	  NULL, NULL
 	},
-#endif
 
 	{ { USB_VENDOR_IOMEGA, USB_PRODUCT_IOMEGA_ZIP100 },
 	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
@@ -189,7 +187,6 @@ Static const struct umass_quirk umass_quirks[] = {
 	  NULL, NULL
 	},
 
-#ifndef __riscos
 	{ { USB_VENDOR_MELCO, USB_PRODUCT_MELCO_DUBPXXG },
 	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
 	  UMASS_QUIRK_FORCE_SHORT_INQUIRY | UMASS_QUIRK_NO_START_STOP,
@@ -197,7 +194,6 @@ Static const struct umass_quirk umass_quirks[] = {
 	  UMATCH_DEVCLASS_DEVSUBCLASS_DEVPROTO,
 	  NULL, NULL
 	},
-#endif
 
 	{ { USB_VENDOR_MICROTECH, USB_PRODUCT_MICROTECH_DPCM },
 	  UMASS_WPROTO_CBI, UMASS_CPROTO_ATAPI,
@@ -231,7 +227,14 @@ Static const struct umass_quirk umass_quirks[] = {
 	  NULL, NULL
 	},
 
-#ifndef __riscos
+	{ { USB_VENDOR_MSYSTEMS, USB_PRODUCT_MSYSTEMS_DISKONKEY2 },
+	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
+	  UMASS_QUIRK_NO_MAX_LUN,
+	  PQUIRK_NOMODESENSE | PQUIRK_NODOORLOCK | PQUIRK_NOBIGMODESENSE,
+	  UMATCH_DEVCLASS_DEVSUBCLASS_DEVPROTO,
+	  NULL, NULL
+	},
+
 	{ { USB_VENDOR_NEODIO, USB_PRODUCT_NEODIO_ND3050 },
 	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
 	  0,
@@ -239,7 +242,6 @@ Static const struct umass_quirk umass_quirks[] = {
 	  UMATCH_VENDOR_PRODUCT,
 	  NULL, NULL
 	},
-#endif
 
 	{ { USB_VENDOR_NEODIO, USB_PRODUCT_NEODIO_ND5010 },
 	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
@@ -281,6 +283,14 @@ Static const struct umass_quirk umass_quirks[] = {
 	  NULL, NULL
 	},
 
+	{ { USB_VENDOR_PEN, USB_PRODUCT_PEN_MOBILEDRIVE },
+	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
+	  0,
+	  PQUIRK_NOMODESENSE | PQUIRK_NODOORLOCK | PQUIRK_FORCELUNS,
+	  UMATCH_DEVCLASS_DEVSUBCLASS_DEVPROTO,
+	  NULL, NULL
+	},
+
 	{ { USB_VENDOR_PEN, USB_PRODUCT_PEN_USBDISK },
 	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
 	  UMASS_QUIRK_NO_MAX_LUN | UMASS_QUIRK_NO_START_STOP,
@@ -289,7 +299,6 @@ Static const struct umass_quirk umass_quirks[] = {
 	  NULL, NULL
 	},
 
-#ifndef __riscos
 	{ { USB_VENDOR_PEN, USB_PRODUCT_PEN_USBREADER },
 	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
 	  0,
@@ -305,7 +314,6 @@ Static const struct umass_quirk umass_quirks[] = {
 	  UMATCH_VENDOR_PRODUCT,
 	  NULL, NULL
 	},
-#endif
 
 	{ { USB_VENDOR_PQI, USB_PRODUCT_PQI_TRAVELFLASH },
 	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
@@ -341,7 +349,6 @@ Static const struct umass_quirk umass_quirks[] = {
 	  NULL, NULL
 	},
 
-#ifndef __riscos
 	{ { USB_VENDOR_SIIG, USB_PRODUCT_SIIG_MULTICARDREADER }, 
 	  UMASS_WPROTO_UNSPEC, UMASS_CPROTO_UNSPEC,
 	  UMASS_QUIRK_NO_START_STOP,
@@ -349,7 +356,6 @@ Static const struct umass_quirk umass_quirks[] = {
 	  UMATCH_DEVCLASS_DEVSUBCLASS_DEVPROTO,
 	  NULL,NULL
 	}, 
-#endif
 
 	{ { USB_VENDOR_SONY, USB_PRODUCT_SONY_DRIVEV2 },
 	  UMASS_WPROTO_BBB, UMASS_CPROTO_ISD_ATA,
