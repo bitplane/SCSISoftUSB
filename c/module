@@ -348,6 +348,7 @@ void module_Service(int service_number, _kernel_swi_regs *r, void *pw)
           /* RemoveAllDevices(); unnecessary */
           break;
       }
+      break;
       
     case Service_DeviceDead:
     {
