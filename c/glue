@@ -217,6 +217,7 @@ void glue_ResetBus(my_usb_device_t *device)
 *
 * Inputs
 *  device: struct describing the interface to reset
+*  reason: 0 => timeout, 1 => escape, 2 => aborted
 *
 * Outputs
 *  NONE
@@ -224,7 +225,7 @@ void glue_ResetBus(my_usb_device_t *device)
 * Returns
 *  NOTHING
 *****************************************************************************/
-void glue_ResetDevice(my_usb_device_t *device)
+void glue_ResetDevice(my_usb_device_t *device, int reason)
 {
   DEBUGf("ResetDevice\n");
   if (device->dying) return;
@@ -241,7 +242,7 @@ void glue_ResetDevice(my_usb_device_t *device)
   if (!irqs_were_off) _kernel_irqs_on();
   device->background_transfer_active = false;
   
-  softc->sc_methods->wire_reset(softc, STATUS_ABORTED, (usbd_status *)&device->status);
+  softc->sc_methods->wire_reset(softc, STATUS_TIMED_OUT + reason, (usbd_status *)&device->status);
   while (softc->transfer_state != TSTATE_IDLE /* && !device->background_transfer_active *** reset doesn't start any of these */)
   {
     softc->sc_methods->wire_state(softc, 0 /* last xfer wasn't bulk */, (usbd_status *)&device->status);
@@ -681,6 +682,17 @@ static void Callback(struct umass_softc *softc, void *void_device, int not_trans
       
     case STATUS_WIRE_FAILED:
       device->callback_error = (_kernel_oserror *)(ErrorNumber_SCSI_Died & 0xFF);
+      break;
+      
+    case STATUS_TIMED_OUT:
+      device->callback_error = (_kernel_oserror *)(ErrorNumber_SCSI_Timeout2 & 0xFF);
+      break;
+      
+    case STATUS_ESCAPE:
+      device->callback_error = _swix(MessageTrans_ErrorLookup, _INR(0,2),
+                                     & (_kernel_oserror) { 17, "Escape" },
+                                     0,
+                                     0);
       break;
       
     case STATUS_ABORTED:

@@ -643,7 +643,7 @@ static _kernel_oserror *CheckConnectedDevice(const USBServiceCall *service_call_
                   break;
                 }
               }
-              glue_ResetDevice(device);
+              glue_ResetDevice(device, 0);
               device->scsi_driver_handle = RegisterSCSIDevice(device);
             }
             else
@@ -770,7 +770,7 @@ _kernel_oserror *module_SCSIHandler(_kernel_swi_regs *r, void *pw)
   switch ( ((int *)r)[11] )
   {
     case 0: /* Features */
-      r->r[1] = 2; /* supports background ops, not foreground ops */
+      r->r[1] = (1<<1) | (1<<5); /* supports background ops and scatter lists */
       break;
       
     case 1: /* Reset bus */
@@ -779,7 +779,7 @@ _kernel_oserror *module_SCSIHandler(_kernel_swi_regs *r, void *pw)
       
     case 2: /* Reset device */
     case 3: /* Abort */
-      glue_ResetDevice((my_usb_device_t *)r->r[8]);
+      glue_ResetDevice((my_usb_device_t *)r->r[8], 0);
       break;
       
     case 4: /* Foreground op */
@@ -813,7 +813,7 @@ _kernel_oserror *module_SCSIHandler(_kernel_swi_regs *r, void *pw)
     }
       
     case 6: /* Cancel background operation */
-      glue_ResetDevice((my_usb_device_t *)r->r[8]);
+      glue_ResetDevice((my_usb_device_t *)r->r[8], r->r[0] & (1<<11) ? 0 : r->r[0] & (1<<12) ? 1 : 2);
       break;
       
     default: /* Unknown reason code */

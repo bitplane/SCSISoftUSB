@@ -119,8 +119,14 @@ static void prf(char *format, unsigned *argp, ...)
 	if( c == '\0' )
 	    return;
 	if( c == '\n' )
+	{
+	    oswrch('\n');
 	    oswrch('\r');
-	oswrch(c);
+	}
+	else
+	{
+	    oswrch(c);
+	}
     }
 
   again:

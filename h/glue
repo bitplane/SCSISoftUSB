@@ -112,6 +112,7 @@ extern void glue_DetachDevice(my_usb_device_t *device);
 *
 * Inputs
 *  device: struct describing the interface to reset
+*  reason: 0 => timeout, 1 => escape, 2 => aborted
 *
 * Outputs
 *  NONE
@@ -119,7 +120,7 @@ extern void glue_DetachDevice(my_usb_device_t *device);
 * Returns
 *  NOTHING
 *****************************************************************************/
-extern void glue_ResetDevice(my_usb_device_t *device);
+extern void glue_ResetDevice(my_usb_device_t *device, int reason);
 
 /*****************************************************************************
 * glue_DoCommand

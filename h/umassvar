@@ -151,7 +151,9 @@ typedef void (*umass_callback)(struct umass_softc *, void *, int, int);
 #define STATUS_CMD_FAILED	2	/* transfer was ok, command failed */
 #define STATUS_WIRE_FAILED	3	/* couldn't even get command across */
 #ifdef __riscos
-#define STATUS_ABORTED          4       /* aborted by higher layer (eg timeout) */
+#define STATUS_TIMED_OUT        4       /* switcher detected timeout */
+#define STATUS_ESCAPE           5       /* switcher detected Escape pressed */
+#define STATUS_ABORTED          6       /* aborted by higher layer */
 #endif
 
 typedef void (*umass_wire_xfer)(struct umass_softc *, int, const void *, int, void *,
