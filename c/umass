@@ -1058,9 +1058,22 @@ umass_bbb_reset(struct umass_softc *sc, int transfer_status
 	DPRINTF(UDMASS_BBB, ("%s: Bulk Reset\n",
 		USBDEVNAME(sc->sc_dev)));
 
-	sc->transfer_state = TSTATE_BBB_RESET1;
+        sc->transfer_state = TSTATE_BBB_RESET1;
 	sc->transfer_status = transfer_status;
 
+#ifdef __riscos
+	/*  Issuing UR_BBB_RESET to many devices causes a lockout.
+	 *   windows only does the clr endpoint stall stuff
+	 *   so for now we'll go straight into that
+	 *   JB20050621
+	 */
+	sc->transfer_state = TSTATE_BBB_RESET2;
+#ifdef __riscos
+	*err =
+#endif
+	umass_clear_endpoint_stall(sc, UMASS_BULKIN );
+#else
+        sc->transfer_state = TSTATE_BBB_RESET1;
 	/* reset is a class specific interface write */
 	sc->sc_req.bmRequestType = UT_WRITE_CLASS_INTERFACE;
 	sc->sc_req.bRequest = UR_BBB_RESET;
@@ -1075,6 +1088,7 @@ umass_bbb_reset(struct umass_softc *sc, int transfer_status
 				  , 0, 0, sc->transfer_xfer[XFER_BBB_RESET1]
 #endif
 				  );
+#endif
 }
 
 Static void

@@ -58,6 +58,8 @@
 *****************************************************************************/
 #undef MESSAGES /* don't need any at the moment */
 
+/* delay after arrival of mass storage device before we tell the scsi system */
+#define PopUpDelay 2*100
 
 /*****************************************************************************
 * New type definitions
@@ -72,7 +74,7 @@
 /*****************************************************************************
 * File scope Global variables
 *****************************************************************************/
-
+static bool Registering;
 
 /*****************************************************************************
 * Function prototypes - Private to this file
@@ -124,6 +126,8 @@ _kernel_oserror *module_Init(const char *cmd_tail, int podule_base, void *pw)
   bool CallbackSet = false;
   IGNORE(cmd_tail);
   IGNORE(podule_base);
+
+  Registering = false;
   
   debug_initialise("SCSISoftUSB", "null:", 0);
 //  debug_set_taskname_prefix(true);
@@ -268,6 +272,12 @@ _kernel_oserror *module_Final(int fatal, int podule, void *pw)
 
   if (!e)
   {
+    _swix(OS_RemoveTickerEvent, _INR(0,1),
+          module_scsiregister_handler,
+          global_PrivateWord);
+    _swix(OS_RemoveCallBack, _INR(0,1),
+          module_scsiregister_handler,
+          global_PrivateWord);
     _swix(OS_RemoveCallBack, _INR(0,1),
           module_callback_from_init,
           global_PrivateWord);
@@ -326,10 +336,18 @@ void module_Service(int service_number, _kernel_swi_regs *r, void *pw)
     case Service_ModulePostInit:
       if (strcmp((const char *)r->r[2], "SCSIdriver") == 0)
       {
+        _swix(OS_RemoveTickerEvent, _INR(0,1),
+           module_scsiregister_handler,
+           global_PrivateWord);
         for (my_usb_device_t *device = global_DeviceList; device != NULL; device = device->next)
         {
-          device->scsi_driver_handle = RegisterSCSIDevice(device);
+          device->registered = false;
         }
+        _swix(OS_CallAfter, _INR(0,2),
+           PopUpDelay,                      /* wait n secs */
+           module_scsiregister_handler,
+           global_PrivateWord);
+
       }
       break;
       
@@ -372,6 +390,34 @@ void module_Service(int service_number, _kernel_swi_regs *r, void *pw)
   }
   return;
 }
+/*  module_SCSIRegister
+ *  register any unregistered devices on the list from a callback
+ */ 
+_kernel_oserror *module_SCSIRegister(_kernel_swi_regs *r, void *pw)
+{
+  IGNORE(r);                         
+  IGNORE(pw);
+  if(Registering)   /* come back later for another pass */
+  {
+    _swix(OS_AddCallBack, _INR(0,1),
+          module_scsiregister_handler,
+          global_PrivateWord);
+    return NULL;
+  }
+  Registering = true;
+  for (my_usb_device_t *device = global_DeviceList; device != NULL; device = device->next)
+  {
+    if(!device->registered)
+    {
+      dprintf(("","Registering scsi device for %x \n",device));
+      device->scsi_driver_handle =RegisterSCSIDevice(device);
+      device->registered = true;
+    }  
+  }
+  Registering = false;
+  return NULL;
+}
+
 
 #if 0
 /*****************************************************************************
@@ -456,6 +502,7 @@ static uint32_t RegisterSCSIDevice(void *device)
         global_PrivateWord,
         device,
         &scsi_driver_handle);
+  dprintf(("","Got scsi device handle %x \n",scsi_driver_handle));
   return scsi_driver_handle;
 }
 
@@ -479,6 +526,7 @@ static uint32_t RegisterSCSIDevice(void *device)
 *****************************************************************************/
 static void DeregisterSCSIDevice(void *device, uint32_t scsi_driver_handle)
 {
+  dprintf(("","DeRegister scsi handle %x \n",scsi_driver_handle));
   _swix(SCSI_Deregister, _INR(0,3),
         scsi_driver_handle,
         module_scsi_handler,
@@ -563,6 +611,7 @@ static _kernel_oserror *CheckConnectedDevice(const USBServiceCall *service_call_
     {
       const usb_interface_descriptor_t *interface = (const usb_interface_descriptor_t *) ptr;
       if (interface->bInterfaceClass == 8          /* mass storage class */
+#ifdef LIMITED_SCOPE      
       && (interface->bInterfaceSubClass == 6        /* SCSI  */
           || interface->bInterfaceSubClass == 5     /* floppy */
          ) 
@@ -570,6 +619,7 @@ static _kernel_oserror *CheckConnectedDevice(const USBServiceCall *service_call_
           || interface->bInterfaceProtocol == 1    /* control/bulk/interrupt without command completion interrupt  */
           || interface->bInterfaceProtocol == 0x50 /* bulk-only */
           )
+#endif
          )
       {
         my_usb_device_t *device = (my_usb_device_t *)((char *) calloc(1, sizeof *device) - 4);
@@ -654,8 +704,15 @@ static _kernel_oserror *CheckConnectedDevice(const USBServiceCall *service_call_
                   break;
                 }
               }
-              glue_ResetDevice(device, 0);
-              device->scsi_driver_handle = RegisterSCSIDevice(device);
+//              glue_ResetDevice(device, 0);
+              _swix(OS_RemoveTickerEvent, _INR(0,1),
+                    module_scsiregister_handler,
+                    global_PrivateWord);
+              device->registered = false;      
+              _swix(OS_CallAfter, _INR(0,2),
+                    PopUpDelay,                      /* wait n secs */
+                    module_scsiregister_handler,
+                    global_PrivateWord);
             }
             else
             {

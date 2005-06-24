@@ -148,10 +148,12 @@ bool glue_AttachDevice(my_usb_device_t *device, uint8_t *maxlun)
   uaa.product = device->product;
   uaa.device = (usbd_device_handle) device;
   uaa.iface = (usbd_interface_handle) device;
+  DEBUGf("using protocol %x\n,",device->protocol);
   
   bool result = umass_attach_riscos(softc, &uaa, device->subclass, device->protocol);
   
   *maxlun = softc->maxlun;
+  DEBUGf("AttachDevice done\n");
   return result;
 }
 
@@ -227,6 +229,12 @@ void glue_ResetBus(my_usb_device_t *device)
 *
 * Returns
 *  NOTHING
+*
+* 20050621 .. note many BBB mass storage devices do not appreciate
+*             having UR_BBB_RESET issued to them. wire->methods->reset
+*             (wire_bbb_reset) is now modified to omit the bulk reset
+*             command and go straight to clr pipe stall stuff (riscos)
+*              
 *****************************************************************************/
 void glue_ResetDevice(my_usb_device_t *device, int reason)
 {
@@ -874,7 +882,8 @@ static void GetOffTickerV(my_usb_device_t *device)
 *****************************************************************************/
 usbd_status usbd_do_request(usbd_device_handle pipe, usb_device_request_t *req, void *data)
 {
-  DEBUGf("do_request()\n");
+  DEBUGf("do_request(%x %x)\n",*(uint32_t *)req,
+                             *((uint32_t *)req+1));
   _kernel_oserror *e = _swix(DeviceFS_CallDevice, _INR(0,1)|_INR(3,6),
                              DeviceCall_ExternalBase + 0,
                              ((my_usb_device_t *)pipe)->devicefs_name,

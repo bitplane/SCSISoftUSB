@@ -40,6 +40,13 @@
 
 
 /*****************************************************************************
+* Scope limiting
+* if LIMITED_SCOPE is defined, then the module will only recognise
+*  a limited subset of devices instead of anything which responds
+*****************************************************************************/
+//#define LIMITED_SCOPE 1
+
+/*****************************************************************************
 * MACROS
 *****************************************************************************/
 #ifndef IGNORE
@@ -94,6 +101,7 @@ typedef struct my_usb_device
   struct my_usb_device *next;
   
   bool dying;
+  bool registered;
   
   uint8_t interface;
   uint8_t alternate;
