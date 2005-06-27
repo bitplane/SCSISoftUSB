@@ -59,7 +59,8 @@
 #undef MESSAGES /* don't need any at the moment */
 
 /* delay after arrival of mass storage device before we tell the scsi system */
-#define PopUpDelay 2*100
+/* delay increased to 4 secs from 2 secs in response to beta feedback */
+#define PopUpDelay 4*100
 
 /*****************************************************************************
 * New type definitions
