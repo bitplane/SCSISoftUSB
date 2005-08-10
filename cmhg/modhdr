@@ -37,6 +37,7 @@ finalisation-code:      module_Final
 service-call-handler:	module_Service	Service_MessageFileClosed,
 					Service_ModulePostInit,
 					Service_ModulePostFinal,
+					Service_PreReset,
 					Service_USB,
 					Service_DeviceDead
 

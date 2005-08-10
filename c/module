@@ -358,6 +358,10 @@ void module_Service(int service_number, _kernel_swi_regs *r, void *pw)
       }
       break;
       
+    case Service_PreReset:
+      module_Final(0, 0, pw);
+      break;
+      
     case Service_USB:
       switch (r->r[0])
       {
