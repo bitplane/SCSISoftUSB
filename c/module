@@ -76,7 +76,7 @@
 * File scope Global variables
 *****************************************************************************/
 static bool Registering;
-
+static bool No_New_Stuff;
 /*****************************************************************************
 * Function prototypes - Private to this file
 *****************************************************************************/
@@ -125,6 +125,7 @@ _kernel_oserror *module_Init(const char *cmd_tail, int podule_base, void *pw)
 #endif
   bool OnUpCallV = false;
   bool CallbackSet = false;
+  No_New_Stuff = false;
   IGNORE(cmd_tail);
   IGNORE(podule_base);
 
@@ -232,7 +233,7 @@ _kernel_oserror *module_CallbackFromInit(_kernel_swi_regs *r, void *pw)
   IGNORE(r);
   IGNORE(pw);
   /* lets see what is there .. */
-  SearchForDevices();
+  if(!No_New_Stuff)SearchForDevices();
   return NULL;
 }
 
@@ -256,47 +257,42 @@ _kernel_oserror *module_CallbackFromInit(_kernel_swi_regs *r, void *pw)
 *****************************************************************************/
 _kernel_oserror *module_Final(int fatal, int podule, void *pw)
 {
-  _kernel_oserror *e = NULL;
   IGNORE(fatal);
   IGNORE(podule);
   IGNORE(pw);
-  
   /* For safety, ensure we're no longer on TickerV */
   _kernel_irqs_off();
+  No_New_Stuff=true;
 
+  RemoveAllDevices();
+  _swix(OS_RemoveTickerEvent, _INR(0,1),
+        module_scsiregister_handler,
+        global_PrivateWord);
+  _swix(OS_RemoveCallBack, _INR(0,1),
+        module_scsiregister_handler,
+        global_PrivateWord);
+  _swix(OS_RemoveCallBack, _INR(0,1),
+        module_callback_from_init,
+        global_PrivateWord);
   global_TickerList=NULL;
   _swix(OS_Release, _INR(0,2),
-        TickerV,
+        TickerV,                                    
         module_tickerv_handler,
         global_PrivateWord);
-  _kernel_irqs_on();
-
-  if (!e)
-  {
-    _swix(OS_RemoveTickerEvent, _INR(0,1),
-          module_scsiregister_handler,
-          global_PrivateWord);
-    _swix(OS_RemoveCallBack, _INR(0,1),
-          module_scsiregister_handler,
-          global_PrivateWord);
-    _swix(OS_RemoveCallBack, _INR(0,1),
-          module_callback_from_init,
-          global_PrivateWord);
-    _swix(OS_Release, _INR(0,2),
-          UpCallV,
-          module_upcallv_handler,
-          global_PrivateWord);
-    RemoveAllDevices();
+  _swix(OS_Release, _INR(0,2),
+        UpCallV,
+        module_upcallv_handler,
+        global_PrivateWord);
 #ifdef MESSAGES
-    _swix(MessageTrans_CloseFile, _IN(0),
-          &global_MessageFD);
+  _swix(MessageTrans_CloseFile, _IN(0),
+        &global_MessageFD);
 #ifndef ROM_MODULE
-    _swix(ResourceFS_DeregisterFiles, _IN(0),
-          resmess_ResourcesFiles());
+  _swix(ResourceFS_DeregisterFiles, _IN(0),
+        resmess_ResourcesFiles());
 #endif
 #endif
-  }
-  return e;
+  _kernel_irqs_on();
+  return NULL;
 }
 
 /*****************************************************************************
@@ -321,6 +317,7 @@ _kernel_oserror *module_Final(int fatal, int podule, void *pw)
 void module_Service(int service_number, _kernel_swi_regs *r, void *pw)
 {
   IGNORE(pw);
+  if (No_New_Stuff)return;
   switch (service_number)
   {
     case Service_MessageFileClosed:
@@ -359,7 +356,7 @@ void module_Service(int service_number, _kernel_swi_regs *r, void *pw)
       break;
       
     case Service_PreReset:
-      module_Final(0, 0, pw);
+      No_New_Stuff=true;
       break;
       
     case Service_USB:
