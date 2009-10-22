@@ -189,6 +189,26 @@ extern void glue_Tick(my_usb_device_t *device);
 *****************************************************************************/
 extern void glue_ReopenStream(uint32_t file_handle);
 
+/*****************************************************************************
+* glue_BufferThresholdCheck
+*
+* Decide whether we should wake up glue_Tick
+*
+* Assumptions
+*  NONE
+*
+* Inputs
+*  buffer: Buffer handle that's sent a filling/emptying upcall
+*  filling: True if it's a filling upcall, false if emptying
+*
+* Outputs
+*  NONE
+*
+* Returns
+*  NOTHING
+*****************************************************************************/
+extern void glue_BufferThresholdCheck(uint32_t buffer,bool filling);
+
 
 #endif  /* end of sentry #ifdef */
 /*****************************************************************************

@@ -72,6 +72,7 @@
   }
 #endif
 
+#define RTSTACK_SIZE 2048
 
 /*****************************************************************************
 * New type definitions
@@ -87,6 +88,7 @@ typedef struct
 {
   uint32_t handle;              /* FileSwitch handle */
   uint32_t buffer;              /* BufferManager internal buffer ID */
+  uint32_t buffer_handle;       /* Buffer handle, as used by the upcalls */
   uint32_t devicedriverstreamhandle;
   bool write;                   /* direction */
   struct my_usb_device *device; /* for getting back to device handle */
@@ -149,6 +151,12 @@ typedef struct my_usb_device
 }
 my_usb_device_t;
 
+typedef struct
+{
+  uint32_t flags;
+  uint32_t *pollword;
+  uint32_t timeout;
+} rtsupport_routine_result;
 
 /*****************************************************************************
 * Constants
@@ -160,6 +168,13 @@ enum
   data_WRITE = 2 << 24   /* by the BSD code (except for the shift).  */
 };
 
+typedef enum
+{
+  callback_NONE,
+  callback_TickerV,
+  callback_RTSupport
+} callback_type;
+
 
 /*****************************************************************************
 * Global variables
@@ -167,7 +182,12 @@ enum
 extern void *global_PrivateWord; /* so we don't have to worry about passing pw around */
 extern MessagesFD global_MessageFD; /* message file descriptor */
 extern my_usb_device_t *global_DeviceList; /* list of usb device info */
-extern my_usb_device_t *global_TickerList; /* list of devices using TickerV */
+extern my_usb_device_t *global_TickerList; /* list of devices using TickerV/RTSupport */
+extern bool global_UseRTSupport; /* Use RTSupport module for scheduling, not TickerV */
+extern int global_RTSupportPollword; /* RTSupport pollword */
+extern _kernel_stack_chunk *global_RTSupportStack; /* RTSupport stack chunk */
+extern int global_RTSupportHandle; /* RTSupport handle */
+extern callback_type global_CallbackType; /* Type of our registered callback, if any */
 #ifdef UMASS_DEBUG
 extern char *states[];
 #endif
