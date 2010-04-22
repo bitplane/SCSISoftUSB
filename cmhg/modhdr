@@ -47,13 +47,12 @@ help-string:		SCSISoftUSB Module_MajorVersion_CMHG Module_MinorVersion_CMHG
 
 date-string:		Module_Date_CMHG
 
-;command-keyword-table:  module_Commands massstorage(,
-;						min-args:	0,
-;						max-args:	0,
-;						international:,
-;						invalid-syntax:	"SPFCCLT",
-;						help-text:	"HPFCCLT"
-;					)
+command-keyword-table:  module_Commands
+
+SCSISoftUSB_PopUpDelay(	min-args: 0, max-args: 1,
+			international:,
+			invalid-syntax:	"SPOPUP",
+			help-text:	"HPOPUP")
 
 international-help-file:"Resources:$.Resources.SCSISoftUSB.Messages"
 
@@ -61,4 +60,5 @@ generic-veneers:	module_callback_from_init/module_CallbackFromInit,
                         module_scsi_handler/module_SCSIHandler,
                         module_tickerv_handler/module_TickerVHandler,
                         module_upcallv_handler/module_UpCallVHandler,
-                        module_scsiregister_handler/module_SCSIRegister
+                        module_scsiregister_handler/module_SCSIRegister,
+                        module_scsiregister_cb_handler/module_SCSIRegister_cb

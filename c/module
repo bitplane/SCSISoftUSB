@@ -57,11 +57,7 @@
 /*****************************************************************************
 * MACROS
 *****************************************************************************/
-#undef MESSAGES /* don't need any at the moment */
-
-/* delay after arrival of mass storage device before we tell the scsi system */
-/* delay increased to 4 secs from 2 secs in response to beta feedback */
-#define PopUpDelay 4*100
+#define MESSAGES
 
 /*****************************************************************************
 * New type definitions
@@ -313,7 +309,7 @@ _kernel_oserror *module_Final(int fatal, int podule, void *pw)
         module_scsiregister_handler,
         global_PrivateWord);
   _swix(OS_RemoveCallBack, _INR(0,1),
-        module_scsiregister_handler,
+        module_scsiregister_cb_handler,
         global_PrivateWord);
   _swix(OS_RemoveCallBack, _INR(0,1),
         module_callback_from_init,
@@ -393,7 +389,7 @@ void module_Service(int service_number, _kernel_swi_regs *r, void *pw)
           device->registered = false;
         }
         _swix(OS_CallAfter, _INR(0,2),
-           PopUpDelay,                      /* wait n secs */
+           1, /* No point using a long delay if SCSIdriver has only just started */
            module_scsiregister_handler,
            global_PrivateWord);
 
@@ -443,6 +439,7 @@ void module_Service(int service_number, _kernel_swi_regs *r, void *pw)
   }
   return;
 }
+
 /*  module_SCSIRegister
  *  register any unregistered devices on the list from a callback
  */ 
@@ -452,12 +449,27 @@ _kernel_oserror *module_SCSIRegister(_kernel_swi_regs *r, void *pw)
   IGNORE(pw);
   if(Registering)   /* come back later for another pass */
   {
-    _swix(OS_AddCallBack, _INR(0,1),
+    _swix(OS_CallAfter, _INR(0,2),
+          10,
           module_scsiregister_handler,
           global_PrivateWord);
     return NULL;
   }
+  /* Instead of registering the devices directly from this ticker event, register them from a callback. This ensures SCSIdriver's malloc()s can enlarge the RMA if needed. */
   Registering = true;
+  _swix(OS_AddCallBack, _INR(0,1),
+        module_scsiregister_cb_handler,
+        global_PrivateWord);
+  return NULL;
+}
+
+/*  module_SCSIRegister_cb
+ *  register any unregistered devices on the list from a callback
+ */ 
+_kernel_oserror *module_SCSIRegister_cb(_kernel_swi_regs *r, void *pw)
+{
+  IGNORE(r);                         
+  IGNORE(pw);
   for (my_usb_device_t *device = global_DeviceList; device != NULL; device = device->next)
   {
     if(!device->registered)
@@ -472,7 +484,6 @@ _kernel_oserror *module_SCSIRegister(_kernel_swi_regs *r, void *pw)
 }
 
 
-#if 0
 /*****************************************************************************
 * module_Commands
 *
@@ -501,33 +512,28 @@ _kernel_oserror *module_Commands(const char *arg_string, int argc, int cmd_no, v
   IGNORE(pw);
   switch (cmd_no)
   {
-    case 0:
-      for (my_usb_device_t *device = global_DeviceList; device != NULL; device = device->next)
+    case CMD_SCSISoftUSB_PopUpDelay:
+      if(argc)
       {
-        printf("%s interface %d alternate %d endpoints %02X %02X %02X using %s protocol"
-               " has %d LUN%s and is attached to SCSI handle %p\n",
-               device->devicefs_name,
-               device->interface,
-               device->alternate,
-               device->bulk_in_endpoint,
-               device->bulk_out_endpoint,
-               device->interrupt_endpoint,
-               device->protocol == 0x50 ? "bulk-only" :
-               device->protocol == 0 ? "CBI (with interrupt)" : "CBI (with no interrupt)",
-               device->maxlun + 1,
-               device->maxlun == 0 ? "" : "s",
-               device);
+        uint32_t delay;
+        /* Use something that will generate an error if the user got it wrong! */
+        e = _swix(OS_ReadUnsigned,_INR(0,1)|_OUT(2),10,arg_string,&delay);
+        if(e)
+          return e;
+        global_PopUpDelay = delay;
       }
-      e = NULL;
-      break;
-      
-    default:
-      assert(false /* unserviced star command */);
+      else
+      {        
+        const char *msg;
+        e = _swix(MessageTrans_Lookup,_INR(0,2)|_OUT(2),&global_MessageFD,"CDELAY",NULL,&msg);
+        if(e)
+          return e;
+        printf(msg,global_PopUpDelay,'\n'); /* What would be worse - using two fixed-size buffers to prepare the message string, or this atrocity? */
+      }
       break;
   }
   return e;
 }
-#endif
 
 /*****************************************************************************
 * RegisterSCSIDevice
@@ -761,9 +767,13 @@ static _kernel_oserror *CheckConnectedDevice(const USBServiceCall *service_call_
               _swix(OS_RemoveTickerEvent, _INR(0,1),
                     module_scsiregister_handler,
                     global_PrivateWord);
-              device->registered = false;      
+              device->registered = false;
+              char *state = getenv("Wimp$State");
+              uint32_t delay = global_PopUpDelay;
+              if(!delay || !state || strcmp(state,"desktop"))
+                 delay = 1; /* Use shortest possible delay when outside the desktop (or if user specified delay of 0!) */
               _swix(OS_CallAfter, _INR(0,2),
-                    PopUpDelay,                      /* wait n secs */
+                    delay,
                     module_scsiregister_handler,
                     global_PrivateWord);
             }

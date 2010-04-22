@@ -63,6 +63,8 @@ _kernel_stack_chunk *global_RTSupportStack = 0; /* RTSupport stack chunk */
 int global_RTSupportHandle = 0; /* RTSupport handle */
 callback_type global_CallbackType = callback_NONE; /* Type of our registered callback, if any */
 
+uint32_t global_PopUpDelay = 400; /* Delay before SCSIFS gets told about new devices */
+
 /*****************************************************************************
 * Function prototypes - Private to this file
 *****************************************************************************/

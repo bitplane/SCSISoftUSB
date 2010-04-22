@@ -188,6 +188,7 @@ extern int global_RTSupportPollword; /* RTSupport pollword */
 extern _kernel_stack_chunk *global_RTSupportStack; /* RTSupport stack chunk */
 extern int global_RTSupportHandle; /* RTSupport handle */
 extern callback_type global_CallbackType; /* Type of our registered callback, if any */
+extern uint32_t global_PopUpDelay; /* Delay before SCSIFS gets told about new devices */ 
 #ifdef UMASS_DEBUG
 extern char *states[];
 #endif

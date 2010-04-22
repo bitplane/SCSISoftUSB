@@ -25,7 +25,7 @@ COMPONENT = SCSISoftUSB
 TARGET    = SCSISoftUSB
 DIRS      = local_dirs
 CFLAGS    = -ffah -wp -wc -we -zM -zps1 -ITCPIPLibs:,C:USB -DDISABLE_PACKED -D_KERNEL ${DEFINES}
-RAM_OBJS  = o.module ${OBJS}
+RAM_OBJS  = o.module ${OBJS} o.resmess
 ROM_OBJS  = o.moduleROM ${OBJS}
 OBJS      =            o.svcprint  o.glue  o.umass  o.umass_quirks  o.global o.asm o.modhdr #o.resmess
 DBG_OBJS  = do.module do.svcprint do.glue do.umass do.umass_quirks do.global o.asm o.modhdr #o.resmess
@@ -36,6 +36,7 @@ DBG_MODULE = drm.${TARGET}
 EXPORTS   = 
 #MERGEDMDIR = o.${MACHINE}._Messages_
 #MERGEDMSGS = ${MERGEDMDIR}.${TARGET}
+RESDIR    = <resource$dir>.Resources2.SCSISoftUSB
 
 include Makefiles:StdTools
 include Makefiles:ModuleLibs
@@ -100,9 +101,14 @@ do.glue: modhdr.h
 moduleROM.o: module.c modhdr.h
         ${CC} ${CFLAGS} -DROM_MODULE -o moduleROM.o module.c
 
-#resmess.o: ${MERGEDMSGS}
-#	ResGen resmess_ResourcesFiles o.resmess ${MERGEDMSGS} Resources.SCSISoftUSB.Messages
-#
+resources:
+        ${MKDIR} ${RESDIR}
+        ${CP} LocalRes:Messages  ${RESDIR}.Messages  ${CPFLAGS}
+        @echo SCSISoftUSB: Resources copied to Messages module
+
+resmess.o: ${MERGEDMSGS}
+	ResGen resmess_ResourcesFiles o.resmess LocalRes:Messages Resources.SCSISoftUSB.Messages
+
 #${MERGEDMSGS}:
 #        ${MKDIR} ${MERGEDMDIR}
 #        IfThere LocalRes:Messages Then ${CP} LocalRes:Messages $@ ${CPFLAGS} Else Create $@
