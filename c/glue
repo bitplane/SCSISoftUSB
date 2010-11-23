@@ -788,9 +788,9 @@ void glue_BufferThresholdCheck(uint32_t buffer,bool filling)
 *****************************************************************************/
 static void Callback(struct umass_softc *softc, void *void_device, int not_transferred, int status)
 {
-  DEBUGf("Callback\n");
   IGNORE(softc);
   my_usb_device_t *device = (my_usb_device_t *)void_device;
+  DEBUGf("Callback, status %d\n",status);
   switch (status)
   {
     case STATUS_CMD_OK:

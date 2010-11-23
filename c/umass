@@ -630,10 +630,8 @@ USB_ATTACH(umass)
 	    !(sc->sc_quirks & UMASS_QUIRK_NO_MAX_LUN)) {
 		err = umass_bbb_get_max_lun(sc, &sc->maxlun);
 		if (err) {
-#ifndef __riscos
-			printf("%s: unable to get Max Lun: %s\n",
-			       USBDEVNAME(sc->sc_dev), usbd_errstr(err));
-#endif
+			DPRINTF(UDMASS_USB,("%s: unable to get Max Lun: %s\n",
+			       USBDEVNAME(sc->sc_dev), usbd_errstr(err)));
 			USB_ATTACH_ERROR_RETURN;
 		}
 	} else {
@@ -1216,6 +1214,7 @@ DPRINTF(UDMASS_BBB,("\n here \n"));
 			, sc->transfer_xfer[XFER_BBB_CBW]))
 #endif
 	{
+		DPRINTF(UDMASS_USB,("STATUS_WIRE_FAILED from bbb_reset\n"));
 		umass_bbb_reset(sc, STATUS_WIRE_FAILED
 #ifdef __riscos
 		                , err
@@ -1279,7 +1278,7 @@ umass_bbb_state(
 	case TSTATE_BBB_COMMAND:
 		/* Command transport phase, error handling */
 		if (RISCOSSTAR err) {
-			DPRINTF(UDMASS_BBB, ("%s: failed to send CBW\n",
+			DPRINTF(UDMASS_BBB, ("%s: failed to send CBW, doing STATUS_WIRE_FAILED\n",
 				USBDEVNAME(sc->sc_dev)));
 			/* If the device detects that the CBW is invalid, then
 			 * the device may STALL both bulk endpoints and require
@@ -1313,11 +1312,14 @@ umass_bbb_state(
 					USBD_SHORT_XFER_OK | USBD_NO_COPY,
 					sc->transfer_xfer[XFER_BBB_DATA]))
 #endif
+			{
+				DPRINTF(UDMASS_BBB,("STATUS_WIRE_FAILED from BBB_COMMAND in\n"));
 				umass_bbb_reset(sc, STATUS_WIRE_FAILED
 #ifdef __riscos
 				                , err
 #endif
 				                );
+			}
 
 			return;
 		} else if (sc->transfer_dir == DIR_OUT) {
@@ -1342,11 +1344,14 @@ umass_bbb_state(
 					USBD_NO_COPY,/* fixed length transfer */
 					sc->transfer_xfer[XFER_BBB_DATA]))
 #endif
+			{
+				DPRINTF(UDMASS_BBB,("STATUS_WIRE_FAILED from BBB_COMMAND out\n"));
 				umass_bbb_reset(sc, STATUS_WIRE_FAILED
 #ifdef __riscos
 				                , err
 #endif
 				                );
+			}
 
 			return;
 		} else {
@@ -1390,6 +1395,7 @@ umass_bbb_state(
 					/* Unless the error is a pipe stall the
 					 * error is fatal.
 					 */
+					DPRINTF(UDMASS_BBB,("going to STATUS_WIRE_FAILED\n"));
 					umass_bbb_reset(sc,STATUS_WIRE_FAILED
 #ifdef __riscos
 					        , err
@@ -1422,7 +1428,7 @@ umass_bbb_state(
 		if (RISCOSSTAR err) {	/* should not occur */
 			/* try the transfer below, even if clear stall failed */
 			DPRINTF(UDMASS_BBB, ("%s: bulk-%s stall clear failed"
-				", %s\n", USBDEVNAME(sc->sc_dev),
+				", %s, going to STATUS_WIRE_FAILED\n", USBDEVNAME(sc->sc_dev),
 				(sc->transfer_dir == DIR_IN? "in":"out"),
 				usbd_errstr(RISCOSSTAR err)));
 			umass_bbb_reset(sc, STATUS_WIRE_FAILED
@@ -1465,6 +1471,7 @@ umass_bbb_state(
 			, next_xfer))
 #endif
 		{
+			DPRINTF(UDMASS_BBB,("going to STATUS_WIRE_FAILED from BBB DCLEAR/SCLEAR\n"));
 			umass_bbb_reset(sc, STATUS_WIRE_FAILED
 #ifdef __riscos
 			                , err
@@ -1498,6 +1505,7 @@ umass_bbb_state(
 				    );
 				return;
 			} else {
+				DPRINTF(UDMASS_BBB,("going to STATUS_WIRE_FAILED from BBB STATUS1/STATUS2\n"));
 				umass_bbb_reset(sc, STATUS_WIRE_FAILED
 #ifdef __riscos
 				        , err
@@ -1520,15 +1528,13 @@ umass_bbb_state(
 
 		/* Check CSW and handle any error */
 		if (UGETDW(sc->csw.dCSWSignature) != CSWSIGNATURE) {
-#ifndef __riscos
 			/* Invalid CSW: Wrong signature or wrong tag might
 			 * indicate that the device is confused -> reset it.
 			 */
-			printf("%s: Invalid CSW: sig 0x%08x should be 0x%08x\n",
+			DPRINTF(UDMASS_BBB,("%s: Invalid CSW: sig 0x%08x should be 0x%08x, going to STATUS_WIRE_FAILED\n",
 				USBDEVNAME(sc->sc_dev),
 				UGETDW(sc->csw.dCSWSignature),
-				CSWSIGNATURE);
-#endif
+				CSWSIGNATURE));
 
 			umass_bbb_reset(sc, STATUS_WIRE_FAILED
 #ifdef __riscos
@@ -1538,12 +1544,10 @@ umass_bbb_state(
 			return;
 		} else if (UGETDW(sc->csw.dCSWTag)
 				!= UGETDW(sc->cbw.dCBWTag)) {
-#ifndef __riscos
-			printf("%s: Invalid CSW: tag %d should be %d\n",
+			DPRINTF(UDMASS_BBB,("%s: Invalid CSW: tag %d should be %d, going to STATUS_WIRE_FAILED\n",
 				USBDEVNAME(sc->sc_dev),
 				UGETDW(sc->csw.dCSWTag),
-				UGETDW(sc->cbw.dCBWTag));
-#endif
+				UGETDW(sc->cbw.dCBWTag)));
 
 			umass_bbb_reset(sc, STATUS_WIRE_FAILED
 #ifdef __riscos
@@ -1554,12 +1558,10 @@ umass_bbb_state(
 
 		/* CSW is valid here */
 		} else if (sc->csw.bCSWStatus > CSWSTATUS_PHASE) {
-#ifndef __riscos
-			printf("%s: Invalid CSW: status %d > %d\n",
+			DPRINTF(UDMASS_BBB,("%s: Invalid CSW: status %d > %d, going to STATUS_WIRE_FAILED\n",
 				USBDEVNAME(sc->sc_dev),
 				sc->csw.bCSWStatus,
-				CSWSTATUS_PHASE);
-#endif
+				CSWSTATUS_PHASE));
 
 			umass_bbb_reset(sc, STATUS_WIRE_FAILED
 #ifdef __riscos
@@ -1568,11 +1570,9 @@ umass_bbb_state(
 			        );
 			return;
 		} else if (sc->csw.bCSWStatus == CSWSTATUS_PHASE) {
-#ifndef __riscos
-			printf("%s: Phase Error, residue = %d\n",
+			DPRINTF(UDMASS_BBB,("%s: Phase Error, residue = %d, going to STATUS_WIRE_FAILED\n",
 				USBDEVNAME(sc->sc_dev),
-				UGETDW(sc->csw.dCSWDataResidue));
-#endif
+				UGETDW(sc->csw.dCSWDataResidue)));
 
 			umass_bbb_reset(sc, STATUS_WIRE_FAILED
 #ifdef __riscos
@@ -1627,11 +1627,9 @@ umass_bbb_state(
 
 	/***** Bulk Reset *****/
 	case TSTATE_BBB_RESET1:
-#ifndef __riscos
 		if (RISCOSSTAR err)
-			printf("%s: BBB reset failed, %s\n",
-				USBDEVNAME(sc->sc_dev), usbd_errstr(RISCOSSTAR err));
-#endif
+			DPRINTF(UDMASS_BBB,("%s: BBB reset failed, %s\n",
+				USBDEVNAME(sc->sc_dev), usbd_errstr(RISCOSSTAR err)));
 
 		sc->transfer_state = TSTATE_BBB_RESET2;
 #ifdef __riscos
@@ -1645,11 +1643,9 @@ umass_bbb_state(
 
 		return;
 	case TSTATE_BBB_RESET2:
-#ifndef __riscos
 		if (RISCOSSTAR err)	/* should not occur */
-			printf("%s: BBB bulk-in clear stall failed, %s\n",
-			       USBDEVNAME(sc->sc_dev), usbd_errstr(RISCOSSTAR err));
-#endif
+			DPRINTF(UDMASS_BBB,("%s: BBB bulk-in clear stall failed, %s\n",
+			       USBDEVNAME(sc->sc_dev), usbd_errstr(RISCOSSTAR err)));
 			/* no error recovery, otherwise we end up in a loop */
 
 		sc->transfer_state = TSTATE_BBB_RESET3;
@@ -1664,11 +1660,9 @@ umass_bbb_state(
 
 		return;
 	case TSTATE_BBB_RESET3:
-#ifndef __riscos
 		if (RISCOSSTAR err)	/* should not occur */
-			printf("%s: BBB bulk-out clear stall failed, %s\n",
-			       USBDEVNAME(sc->sc_dev), usbd_errstr(RISCOSSTAR err));
-#endif
+			DPRINTF(UDMASS_BBB,("%s: BBB bulk-out clear stall failed, %s\n",
+			       USBDEVNAME(sc->sc_dev), usbd_errstr(RISCOSSTAR err)));
 			/* no error recovery, otherwise we end up in a loop */
 
 		sc->transfer_state = TSTATE_IDLE;
@@ -1680,12 +1674,10 @@ umass_bbb_state(
 
 		return;
 
-#ifndef __riscos
 	/***** Default *****/
 	default:
-		panic("%s: Unknown state %d",
-		      USBDEVNAME(sc->sc_dev), sc->transfer_state);
-#endif
+		DPRINTF(UDMASS_USB,("%s: Unknown state %d",
+		      USBDEVNAME(sc->sc_dev), sc->transfer_state));
 	}
 }
 
