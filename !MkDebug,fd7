@@ -13,4 +13,4 @@
 | limitations under the License.
 |
 Dir <Obey$Dir>
-amu_machine debug THROWBACK=-throwback 
+amu_machine all THROWBACK=-throwback DEBUG=TRUE 

@@ -21,97 +21,32 @@
 # ----         ----    -----------
 # 29-Apr-2003  BJGA    Created.
 
-COMPONENT = SCSISoftUSB
-TARGET    = SCSISoftUSB
-DIRS      = local_dirs
-CFLAGS    = -ffah -wp -wc -we -zM -zps1 -ITCPIPLibs:,C:USB -DDISABLE_PACKED -D_KERNEL ${DEFINES}
-RAM_OBJS  = o.module ${OBJS} o.resmess
-ROM_OBJS  = o.moduleROM ${OBJS}
-OBJS      =            o.svcprint  o.glue  o.umass  o.umass_quirks  o.global o.asm o.modhdr #o.resmess
-DBG_OBJS  = do.module do.svcprint do.glue do.umass do.umass_quirks do.global o.asm o.modhdr #o.resmess
-LIBDIR    = <Lib$Dir>
-LIBS      = 
-DBG_LIBS  = ${DEBUGLIB} ${LIBS} ${MODMALLOCLIB} ${WILDLIB} ${DDTLIB} ${DESKLIB} ${CALLXLIB} ${ASMUTILS} ${TBOXLIBS} ${LIBDIR}.DebugLib.o.debuglibzm TCPIPLibs:o.socklib5zm TCPIPLibs:o.inetlibzm
-DBG_MODULE = drm.${TARGET}
-EXPORTS   = 
-#MERGEDMDIR = o.${MACHINE}._Messages_
-#MERGEDMSGS = ${MERGEDMDIR}.${TARGET}
-RESDIR    = <resource$dir>.Resources2.SCSISoftUSB
+DEBUG ?= FALSE
 
-include Makefiles:StdTools
-include Makefiles:ModuleLibs
-include Makefiles:ModStdRule
-include Makefiles:RAMCModule
-include Makefiles:ROMCModule
+ifeq ($(DEBUG),TRUE)
+CFLAGS += -DDEBUGLIB -DUMASS_DEBUG -DUSB_DEBUG
+CMHGFLAGS += -DDEBUGLIB -DUMASS_DEBUG -DUSB_DEBUG
+LIBS = ${DEBUGLIBS} ${NET5LIBS}
+endif
 
-.SUFFIXES: .do
-.c.do:; ${CC} ${CFLAGS} -DDEBUGLIB -DUMASS_DEBUG -o $@ $<
+COMPONENT   = SCSISoftUSB
+TARGET      = SCSISoftUSB
+OBJS        = global glue module umass umass_quirks asm
+CMHGFILE    = modhdr
+HDRS        =
 
-local_dirs:
-        ${MKDIR} gpa
-        ${MKDIR} aif
-        ${MKDIR} do
-        ${MKDIR} o
+CINCLUDES   = -ITCPIPLibs:,C:USB
+CFLAGS      += -ffah -wp -wc -we -zM -zps1 -DDISABLE_PACKED -D_KERNEL
+CMHGDEPENDS = glue module
+RAMCDEFINES = -DSTANDALONE
 
-export: ${EXPORTS}
-        @${ECHO} ${COMPONENT}: export complete
+RES_OBJ = resmess
+RES_AREA = resmess_ResourcesFiles
 
-${EXPORTS}: 
-
-#resources: Messages${CMDHELP}
-#        ${MKDIR} ${RESDIR}.${COMPONENT}
-#        ${CP} Messages${CMDHELP} ${RESDIR}.${COMPONENT}.Messages ${CPFLAGS}
-#        ${RM} Messages${CMDHELP}
-#        @${ECHO} ${COMPONENT}: resource files copied
-
-aif.${COMPONENT}: ${RAM_OBJS} ${RAM_LIBS} ${CLIB} ${DIRS}
-        link -base 0 -aif -bin -d -o $@ ${RAM_OBJS} ${RAM_LIBS} ${CLIB}
-
-gpa.${COMPONENT}: aif.${COMPONENT}
-        togpa -s aif.${COMPONENT} $@
-
-
-
-clean:
-        ${RM} Messages
-        ${RM} h.modhdr
-        ifthere linked then wipe linked ${WFLAGS}
-        ifthere aof    then wipe aof    ${WFLAGS}
-        ifthere aif    then wipe aif    ${WFLAGS}
-        ifthere gpa    then wipe gpa    ${WFLAGS}
-        ifthere drm    then wipe drm    ${WFLAGS}
-        ifthere do     then wipe do     ${WFLAGS}
-        ifthere rm     then wipe rm     ${WFLAGS}
-        ifthere o      then wipe o      ${WFLAGS}
-        @${ECHO} ${COMPONENT}: cleaned
-
-debug: ${DBG_MODULE}
-        @${ECHO} ${COMPONENT}: debug module built
-
-${DBG_MODULE}: ${DBG_OBJS} ${DBG_LIBS} ${CLIB} ${DIRS}
-        ${MKDIR} drm
-        ${LD} ${LDFLAGS} -o $@ -rmf ${DBG_OBJS} ${DBG_LIBS} ${CLIB}
-        ${CHMOD} -R a+rx drm
-
-o.module: modhdr.h
-do.module: modhdr.h
-o.glue: modhdr.h
-do.glue: modhdr.h
-
-moduleROM.o: module.c modhdr.h
-        ${CC} ${CFLAGS} -DROM_MODULE -o moduleROM.o module.c
-
-resources:
-        ${MKDIR} ${RESDIR}
-        ${CP} LocalRes:Messages  ${RESDIR}.Messages  ${CPFLAGS}
-        @echo SCSISoftUSB: Resources copied to Messages module
-
-resmess.o: ${MERGEDMSGS}
-	ResGen resmess_ResourcesFiles o.resmess LocalRes:Messages Resources.SCSISoftUSB.Messages
-
-#${MERGEDMSGS}:
-#        ${MKDIR} ${MERGEDMDIR}
-#        IfThere LocalRes:Messages Then ${CP} LocalRes:Messages $@ ${CPFLAGS} Else Create $@
-#        IfThere LocalRes:CmdHelp Then FAppend $@ $@ LocalRes:CmdHelp
+include StdTools
+include ModStdRule
+include ModuleLibs
+include DbgRules
+include CModule
 
 # Dynamic dependencies:

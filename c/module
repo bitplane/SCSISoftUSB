@@ -57,7 +57,7 @@
 /*****************************************************************************
 * MACROS
 *****************************************************************************/
-#define MESSAGES
+
 
 /*****************************************************************************
 * New type definitions
@@ -83,7 +83,6 @@ static _kernel_oserror *SearchForDevices(void);
 static _kernel_oserror *CheckConnectedDevice(const USBServiceCall *service_call_block);
 static _kernel_oserror *CheckDisconnectedDevice(const char *device_name);
 static _kernel_oserror *RemoveAllDevices(void);
-
 
 /*****************************************************************************
 * Functions
@@ -114,12 +113,10 @@ static _kernel_oserror *RemoveAllDevices(void);
 _kernel_oserror *module_Init(const char *cmd_tail, int podule_base, void *pw)
 {
   _kernel_oserror *e = NULL;
-#ifdef MESSAGES
-#ifndef ROM_MODULE
+#ifdef STANDALONE
   bool FileRegistered = false;
 #endif
   bool MessagesOpen = false;
-#endif
   bool OnUpCallV = false;
   bool CallbackSet = false;
   No_New_Stuff = false;
@@ -146,9 +143,7 @@ _kernel_oserror *module_Init(const char *cmd_tail, int podule_base, void *pw)
   
   if (!e)
   {
-    
-#ifdef MESSAGES
-#ifndef ROM_MODULE
+#ifdef STANDALONE
     e = _swix(ResourceFS_RegisterFiles, _IN(0),
               resmess_ResourcesFiles());
   }
@@ -165,7 +160,6 @@ _kernel_oserror *module_Init(const char *cmd_tail, int podule_base, void *pw)
   if (!e)
   {
     MessagesOpen = true;
-#endif
   }
   if (!e)
   {
@@ -239,13 +233,11 @@ _kernel_oserror *module_Init(const char *cmd_tail, int podule_base, void *pw)
                             module_upcallv_handler,
                             global_PrivateWord);
   if (e) RemoveAllDevices();
-#ifdef MESSAGES
   if (e && MessagesOpen) _swix(MessageTrans_CloseFile, _IN(0),
                                &global_MessageFD);
-#ifndef ROM_MODULE
+#ifdef STANDALONE
   if (e && FileRegistered) _swix(ResourceFS_DeregisterFiles, _IN(0),
                                  resmess_ResourcesFiles());
-#endif
 #endif
   return e;
 }
@@ -330,13 +322,11 @@ _kernel_oserror *module_Final(int fatal, int podule, void *pw)
         UpCallV,
         module_upcallv_handler,
         global_PrivateWord);
-#ifdef MESSAGES
   _swix(MessageTrans_CloseFile, _IN(0),
         &global_MessageFD);
-#ifndef ROM_MODULE
+#ifdef STANDALONE
   _swix(ResourceFS_DeregisterFiles, _IN(0),
         resmess_ResourcesFiles());
-#endif
 #endif
   _kernel_irqs_on();
   return NULL;
@@ -368,14 +358,12 @@ void module_Service(int service_number, _kernel_swi_regs *r, void *pw)
   switch (service_number)
   {
     case Service_MessageFileClosed:
-#ifdef MESSAGES
       /* We might want to use our message file descriptor from the background, */
       /* so re-open message file now, when filing system re-entrancy isn't an issue */
       _swix(MessageTrans_OpenFile, _INR(0,2),
             &global_MessageFD,
             Module_MessagesFile,
             0);
-#endif
       break;
       
     case Service_ModulePostInit:
