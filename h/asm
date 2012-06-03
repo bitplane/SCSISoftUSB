@@ -124,6 +124,26 @@ extern uint32_t asm_CallBufferManager(uint32_t reason, uint32_t buffer_id, void 
 *****************************************************************************/
 extern void asm_UpCallHandler(void);
 
+/*****************************************************************************
+* asm_RTSupportWrapper
+*
+* Wrapper for RTSupportWrapper, to get us out of SYS mode and into SVC mode
+* (required so we can safely use the other asm calls)
+*
+* Assumptions
+*  NONE
+*
+* Inputs
+*  Pointer to relocation offsets
+*
+* Outputs
+*  NONE
+*
+* Returns
+*  Details of next call, from RTSupportWrapper
+*****************************************************************************/
+extern void asm_RTSupportWrapper(uint32_t *reloc);
+
 
 #endif  /* end of sentry #ifdef */
 /*****************************************************************************

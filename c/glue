@@ -844,7 +844,7 @@ static void Callback(struct umass_softc *softc, void *void_device, int not_trans
 *  NONE
 *
 * Inputs
-*  r0:     R0 value from RTSupport. Unused.
+*  NONE
 *
 * Outputs
 *  NONE
@@ -853,11 +853,10 @@ static void Callback(struct umass_softc *softc, void *void_device, int not_trans
 *  Time of next execution. May not return at all if the RTSupport callback is
 *  no longer needed.
 *****************************************************************************/
-static __value_in_regs rtsupport_routine_result RTSupportWrapper(void *r0)
+__value_in_regs rtsupport_routine_result RTSupportWrapper(void)
 {
   unsigned int time;
   _kernel_oserror *e;
-  IGNORE(r0);
       DEBUGCHAR('>');
   /* Make sure IRQs are off. RTSupport will restore the correct state when/if we exit. */
   _kernel_irqs_off();
@@ -924,12 +923,12 @@ static void GetOnTickerV(my_usb_device_t *device)
       DEBUGCHAR('+');
       _kernel_oserror *e = _swix(RT_Register,_INR(0,7)|_OUT(0),
             0,
-            RTSupportWrapper,
-            0,
+            asm_RTSupportWrapper,
+            *((uint32_t **)global_PrivateWord)+1,
             global_PrivateWord,
             &global_RTSupportPollword,
-            ((int)global_RTSupportStack)+560,
-            ((int)global_RTSupportStack)+RTSTACK_SIZE,
+            0,
+            0,
             "SCSISoftUSB:48",
             &global_RTSupportHandle);
       if(!e)

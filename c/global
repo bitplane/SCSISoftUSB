@@ -59,7 +59,6 @@ my_usb_device_t *global_TickerList = NULL; /* list of devices using TickerV */
 
 bool global_UseRTSupport = false; /* Use RTSupport instead of TickerV? */
 int global_RTSupportPollword = 0; /* RTSupport pollword */
-_kernel_stack_chunk *global_RTSupportStack = 0; /* RTSupport stack chunk */
 int global_RTSupportHandle = 0; /* RTSupport handle */
 callback_type global_CallbackType = callback_NONE; /* Type of our registered callback, if any */
 

@@ -211,14 +211,7 @@ _kernel_oserror *module_Init(const char *cmd_tail, int podule_base, void *pw)
       version = version<<(zeros*4);
       if(version >= 0x0500)
       {
-        global_RTSupportStack = calloc(1, RTSTACK_SIZE);
-        if(global_RTSupportStack)
-        {
-          global_UseRTSupport = true;
-          global_RTSupportStack->sc_mark = 0xF60690FF;
-          global_RTSupportStack->sc_size = RTSTACK_SIZE;
-          memcpy(global_RTSupportStack+1,_kernel_current_stack_chunk()+1,28);
-        }
+        global_UseRTSupport = true;
       }
     }
     if(!global_UseRTSupport)
@@ -316,8 +309,6 @@ _kernel_oserror *module_Final(int fatal, int podule, void *pw)
     _swix(RT_Deregister, _INR(0,1),
           0,
           global_RTSupportHandle);
-  if(global_RTSupportStack)
-    free(global_RTSupportStack);
   _swix(OS_Release, _INR(0,2),
         UpCallV,
         module_upcallv_handler,

@@ -209,6 +209,27 @@ extern void glue_ReopenStream(uint32_t file_handle);
 *****************************************************************************/
 extern void glue_BufferThresholdCheck(uint32_t buffer,bool filling);
 
+/*****************************************************************************
+* RTSupportWrapper
+*
+* Wrapper function that sits between the RTSupport module and
+* module_TickerVHandler
+*
+* Assumptions
+*  NONE
+*
+* Inputs
+*  NONE
+*
+* Outputs
+*  NONE
+*
+* Returns
+*  Time of next execution. May not return at all if the RTSupport callback is
+*  no longer needed.
+*****************************************************************************/
+__value_in_regs rtsupport_routine_result RTSupportWrapper(void);
+
 
 #endif  /* end of sentry #ifdef */
 /*****************************************************************************

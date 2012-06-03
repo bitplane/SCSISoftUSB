@@ -185,7 +185,6 @@ extern my_usb_device_t *global_DeviceList; /* list of usb device info */
 extern my_usb_device_t *global_TickerList; /* list of devices using TickerV/RTSupport */
 extern bool global_UseRTSupport; /* Use RTSupport module for scheduling, not TickerV */
 extern int global_RTSupportPollword; /* RTSupport pollword */
-extern _kernel_stack_chunk *global_RTSupportStack; /* RTSupport stack chunk */
 extern int global_RTSupportHandle; /* RTSupport handle */
 extern callback_type global_CallbackType; /* Type of our registered callback, if any */
 extern uint32_t global_PopUpDelay; /* Delay before SCSIFS gets told about new devices */ 
