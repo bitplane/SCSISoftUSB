@@ -1136,11 +1136,11 @@ usbd_status usbd_open_pipe(usbd_interface_handle iface, u_int8_t address, u_int8
   char filename[sizeof "USBxxxxxxxxxxxxxxxx#interfacexxx;alternatexxx;endpointxxx;bulk;sizexxxxxx:" + 1];
   if (pipe) *pipe = 0; /* in case of error */
   
-  sprintf(filename, "%s#interface%d;alternate%d;endpoint%d;bulk;size%d:",
+  sprintf(filename, "%s#endpoint%d;interface%d;alternate%d;bulk;size%d:",
          device->devicefs_name,
+         address & 0x7F,
          device->interface,
          device->alternate,
-         address & 0x7F,
          BUFFER_SIZE);
   DEBUGf("\n usbd_open_pipe %s\n",filename);
   _swix(OS_Claim, _INR(0,2),
