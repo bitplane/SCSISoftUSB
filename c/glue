@@ -147,7 +147,7 @@ bool glue_AttachDevice(my_usb_device_t *device, uint8_t *maxlun)
   softc->sc_maxpacket[UMASS_BULKOUT] = device->bulk_out_maxpacketsize;
   softc->sc_maxpacket[UMASS_INTRIN] = device->interrupt_maxpacketsize;
   /* claim packet buffers, since Glue_Tick may have trouble claimig them */
-  softc->scbulkoutbuf=malloc(device->bulk_out_maxpacketsize);
+  softc->scbulkoutbuf=malloc(MAX(device->bulk_out_maxpacketsize,device->bulk_in_maxpacketsize));
 
   struct usb_attach_arg uaa;
   memset(&uaa, 0, sizeof uaa);
@@ -354,7 +354,7 @@ _kernel_oserror *glue_DoCommand(my_usb_device_t *device, uint32_t lun, uint32_t 
   if (!irqs_were_off) _kernel_irqs_on();
   device->background_transfer_active = false;
   device->current_fill=0;
-  
+
   if (data_direction != DIR_NONE << 24)
   {
     /* check whether command is block oriented */
@@ -368,13 +368,20 @@ _kernel_oserror *glue_DoCommand(my_usb_device_t *device, uint32_t lun, uint32_t 
       case 0x0f:
       case 0x2f: /* verify command */
            {
-                uint32_t maxpacket = device->current_pipe->maxpacket;
-                DEBUGf(" Need part packet correction check left:%x mp:%x\n",transfer_length & (maxpacket-1),maxpacket);
-                if((transfer_length & (maxpacket-1)) > 0)
+                uint32_t maxpacket = (data_direction == (DIR_IN<<24))?device->bulk_in_maxpacketsize:device->bulk_out_maxpacketsize;
+                DEBUGf(" Need part packet correction check left:%x mp:%x blocksize:%x\n",transfer_length & (maxpacket-1),maxpacket,device->block_size);
+                /* If we know the device block size, round up to that instead of USB packet size */
+                size_t rounded_size = transfer_length;
+                if(device->block_size && !(device->block_size & (device->block_size-1)))
                 {
-                  device->current_fill=maxpacket-(transfer_length & (maxpacket-1));
-                  transfer_length=(transfer_length&~(maxpacket-1)) + maxpacket;
+                  rounded_size = (rounded_size+device->block_size-1) & ~(device->block_size-1);
                 }
+                else
+                {
+                  rounded_size = (rounded_size+maxpacket-1) & ~(maxpacket-1);
+                }
+                device->current_fill = rounded_size - transfer_length;
+                transfer_length = rounded_size;
                 break;
            }
       default:          
@@ -392,7 +399,14 @@ _kernel_oserror *glue_DoCommand(my_usb_device_t *device, uint32_t lun, uint32_t 
       }
     }
   }
-  
+
+  /* Detect CAPACITY commands so that we can peek at the SCSI block size
+     This is a hack, but is a convenient way of getting the required information
+     without having to read it ourselves (and deal with devices being slow to
+     initialise, removable devices, etc.)
+  */
+  device->is_capacity = ((control_block[0] == 0x25) && (data_direction == (DIR_IN<<24)) && (control_block_length == 10) && (transfer_length == 8));
+
   device->callback = callback; /* remember the address to call in SCSIDriver */
   device->callback_pw = callback_pw;
   device->callback_wp = callback_wp;
@@ -476,6 +490,7 @@ void glue_Tick(my_usb_device_t *device)
 
   _kernel_oserror *e;
   size_t buffer_used;
+  uint32_t maxpacket = device->current_pipe->maxpacket;
   /* Behaviour is different for reads and writes */
   if (device->current_pipe->write)
   {
@@ -486,7 +501,6 @@ void glue_Tick(my_usb_device_t *device)
     /* check for errors, then write as much as possible */
     buffer_used = USED_SPACE(device->current_pipe->buffer);
     DEBUGf("TXused_space = %x, TXfree=%x\n", buffer_used,FREE_SPACE(device->current_pipe->buffer));
-    uint32_t maxpacket = device->current_pipe->maxpacket;
     size_t buffer_free = (BUFFER_SIZE - 1) - buffer_used;
     if (buffer_free < device->curr_transferlength)
     {
@@ -504,31 +518,38 @@ void glue_Tick(my_usb_device_t *device)
       size_t pindex = 0; /* current index into the packet */
       while (buffer_free > 0 && device->curr_transferlength > 0)
       {
-        
-        size_t contig_len = MIN(buffer_free, MIN(device->curr_transferlength, device->curr_scatterlist->length - device->curr_offset));
+        size_t contig_len;
+        bool padding = false;
+        if (device->curr_transferlength <= device->curr_padding)
+        {
+          /* Padding area - limit to one USB packet per loop to keep things simple */
+          contig_len = MIN(device->curr_transferlength, maxpacket);
+          padding = true;
+        }
+        else
+        {
+          /* Data area - avoid reading crossing into padding area until next loop
+             Also avoid crossing scatter list entry boundary */
+          contig_len = MIN(device->curr_transferlength-device->curr_padding, device->curr_scatterlist->length - device->curr_offset);
+        }
+        contig_len = MIN(buffer_free, contig_len);
       DEBUGf("TX write contig_len:%x\n",contig_len);
+
+        /* Attempt to fill any current partial packet, using scbulkoutbuf as temp */
         if (pindex > 0)
         {
           while (pindex < maxpacket && contig_len > 0)
           {
-            softc->scbulkoutbuf[pindex++] = device->curr_scatterlist->start[device->curr_offset];
+            char c = 0; /* Pad with 0 if necessary */
+            if (!padding)
+            {
+              c = device->curr_scatterlist->start[device->curr_offset++];
+            }
+            softc->scbulkoutbuf[pindex++] = c; 
             contig_len --;
             buffer_free --;
             buffer_used ++;
             device->curr_transferlength --;
-            device->curr_offset ++;
-            if (device->curr_transferlength > 0)
-            {
-              while (device->curr_offset == device->curr_scatterlist->length)
-              {
-                device->curr_scatterlist++;
-                device->curr_offset = 0;
-                if ((uint32_t) device->curr_scatterlist->start >= 0xFFFF0000u)
-                {
-                  device->curr_scatterlist = (scatter_entry_t *) ((char *) device->curr_scatterlist + (int32_t) device->curr_scatterlist->start);
-                }
-              }
-            }
           }
           if (pindex == maxpacket)
           {
@@ -536,9 +557,10 @@ void glue_Tick(my_usb_device_t *device)
             pindex = 0;
           }
         }
-        
+
+        /* Copy any whole packets directly from source */        
         size_t wholepacket_len = contig_len &~ (maxpacket - 1);
-        if (wholepacket_len > 0)
+        if ((wholepacket_len > 0) && !padding)
         {
           INSERT_BLOCK(device->current_pipe->buffer, device->curr_scatterlist->start + device->curr_offset, wholepacket_len);
           contig_len -= wholepacket_len;
@@ -546,47 +568,41 @@ void glue_Tick(my_usb_device_t *device)
           buffer_used += wholepacket_len;
           device->curr_transferlength -= wholepacket_len;
           device->curr_offset += wholepacket_len;
-          if (device->curr_transferlength > 0)
-          {
-            while (device->curr_offset == device->curr_scatterlist->length)
-            {
-              device->curr_scatterlist++;
-              device->curr_offset = 0;
-              if ((uint32_t) device->curr_scatterlist->start >= 0xFFFF0000u)
-              {
-                device->curr_scatterlist = (scatter_entry_t *) ((char *) device->curr_scatterlist + (int32_t) device->curr_scatterlist->start);
-              }
-            }
-          }
         }
-        
+
+        /* Any remainder goes into scbulkoutbuf */        
         while (contig_len > 0)
         {
-          softc->scbulkoutbuf[pindex++] = device->curr_scatterlist->start[device->curr_offset];
+          char c = 0; /* Pad with 0 if necessary */
+          if (!padding)
+          {
+            c = device->curr_scatterlist->start[device->curr_offset++];
+          }
+          softc->scbulkoutbuf[pindex++] = c;
           contig_len --;
           buffer_free --;
           buffer_used ++;
           device->curr_transferlength --;
-          device->curr_offset ++;
-          if (device->curr_transferlength > 0)
-          {
-            while (device->curr_offset == device->curr_scatterlist->length)
-            {
-              device->curr_scatterlist++;
-              device->curr_offset = 0;
-              if ((uint32_t) device->curr_scatterlist->start >= 0xFFFF0000u)
-              {
-                device->curr_scatterlist = (scatter_entry_t *) ((char *) device->curr_scatterlist + (int32_t) device->curr_scatterlist->start);
-              }
-            }
-          }
         }
         if (pindex == maxpacket || device->curr_transferlength == 0)
         {
           INSERT_BLOCK(device->current_pipe->buffer, softc->scbulkoutbuf, pindex);
           pindex = 0;
         }
-        
+
+        /* Advance scatter list */        
+        if (device->curr_transferlength > device->curr_padding)
+        {
+          while (device->curr_offset == device->curr_scatterlist->length)
+          {
+            device->curr_scatterlist++;
+            device->curr_offset = 0;
+            if ((uint32_t) device->curr_scatterlist->start >= 0xFFFF0000u)
+            {
+              device->curr_scatterlist = (scatter_entry_t *) ((char *) device->curr_scatterlist + (int32_t) device->curr_scatterlist->start);
+            }
+          }
+        }
       }
     }
   }
@@ -603,13 +619,39 @@ void glue_Tick(my_usb_device_t *device)
     DEBUGf("RX data needed = %x, ", device->curr_transferlength);
       while (buffer_used > 0 && device->curr_transferlength > 0)
       {
-        size_t contig_len = MIN(buffer_used, MIN(device->curr_transferlength, device->curr_scatterlist->length - device->curr_offset));
-        REMOVE_BLOCK(device->current_pipe->buffer, device->curr_scatterlist->start + device->curr_offset, contig_len);
+        size_t contig_len;
+        bool padding = false;
+        if (device->curr_transferlength <= device->curr_padding)
+        {
+          /* Padding area - limit to one USB packet per loop to keep things simple */
+          contig_len = MIN(device->curr_transferlength, maxpacket);
+          padding = true;
+        }
+        else
+        {
+          /* Data area - avoid reading crossing into padding area until next loop
+             Also avoid crossing scatter list entry boundary */
+          contig_len = MIN(device->curr_transferlength-device->curr_padding, device->curr_scatterlist->length - device->curr_offset);
+        }
+        contig_len = MIN(buffer_used, contig_len);
+
+        if (!padding)
+        {
+          /* Data area */
+          REMOVE_BLOCK(device->current_pipe->buffer, device->curr_scatterlist->start + device->curr_offset, contig_len);
+          device->curr_offset += contig_len;
+        }
+        else
+        {
+          /* Padding area - read into scbulkoutbuf */
+          REMOVE_BLOCK(device->current_pipe->buffer, softc->scbulkoutbuf, contig_len);
+        }
         buffer_used -= contig_len;
         device->curr_transferlength -= contig_len;
     DEBUGf("RX still to go = %x, ", device->curr_transferlength);
-        device->curr_offset += contig_len;
-        if (device->curr_transferlength > 0)
+
+        /* Advance scatter list */        
+        if (device->curr_transferlength > device->curr_padding)
         {
           while (device->curr_offset == device->curr_scatterlist->length)
           {
@@ -645,6 +687,15 @@ void glue_Tick(my_usb_device_t *device)
     else
     {
       device->status = USBD_NORMAL_COMPLETION;
+      if ((device->is_capacity) && ((softc->transfer_state == TSTATE_BBB_DATA) || (softc->transfer_state == TSTATE_CBI_DATA)) && (device->orig_scatterlist->length >= 8))
+      {
+        /* Peek at the block size returned in the capacity result, so that we
+           can adjust our padding logic to use that block size instead of the
+           USB packet size */
+        uint8_t *capacity = (uint8_t *) device->orig_scatterlist->start;
+        DEBUGf("CAPACITY result %08x %08x %02x %02x %02x %02x %02x %02x %02x %02x\n",device->orig_scatterlist,device->orig_scatterlist->start,capacity[0],capacity[1],capacity[2],capacity[3],capacity[4],capacity[5],capacity[6],capacity[7]);
+        device->block_size = (capacity[4]<<24) | (capacity[5]<<16) | (capacity[6]<<8) | capacity[7];
+      }
     }
     device->background_transfer_active = false;
     DEBUGf("going into wire_state, state, status = %x %x\n", softc->transfer_state, device->status);
@@ -829,7 +880,11 @@ static void Callback(struct umass_softc *softc, void *void_device, int not_trans
       device->callback_error = (_kernel_oserror *)(ErrorNumber_SCSI_AbortOp & 0xFF);
       break;
   }
-  device->callback_not_transferred = not_transferred;
+  device->callback_not_transferred = not_transferred-device->current_fill;
+  if (((int)device->callback_not_transferred) < 0)
+  {
+    device->callback_not_transferred = 0;
+  }
   /* Callback to SCSIDriver is done later, when our semaphores have been released */
   return;
 }
@@ -1271,14 +1326,16 @@ usbd_status umass_setup_transfer(struct umass_softc *sc, usbd_pipe_handle pipeh,
     device->fake_list.start = buffer;
     device->fake_list.length = buflen;
     device->orig_scatterlist = &device->fake_list;
+    device->curr_padding = 0;
   }
   else
   {
     device->orig_scatterlist = buffer;
+    device->curr_padding = device->current_fill;
   }
   device->curr_scatterlist = device->orig_scatterlist;
   device->curr_offset = 0;
-  device->orig_transferlength = buflen+device->current_fill;
+  device->orig_transferlength = buflen;
   device->curr_transferlength = buflen;
   device->background_transfer_active = true;
 

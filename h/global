@@ -117,6 +117,7 @@ typedef struct my_usb_device
   uint16_t interrupt_maxpacketsize;
   uint16_t vendor;
   uint16_t product;
+  uint32_t block_size;
   
   uint8_t maxlun;
   
@@ -136,11 +137,13 @@ typedef struct my_usb_device
   bool command_active;               /* active at any phase */
   bool ticker_semaphore;             /* paranoid ticker re-entrancy semaphore */
   bool background_transfer_active;   /* active and at a phase involving a bulk pipe */
+  bool is_capacity;                  /* True if we're processing a CAPACITY command */
   scatter_entry_t *orig_scatterlist; /* scatterlist pointer st start of background xfer */
   size_t orig_transferlength;        /* to-do count at start of background xfer */
   scatter_entry_t *curr_scatterlist; /* working scatterlist pointer */
   size_t curr_offset;                /* offset into first entry in working scatterlist */
   size_t curr_transferlength;        /* working to-do count */
+  size_t curr_padding;               /* how many padding bytes there are in this transfer */
   
   void (*callback)(void);    /* callback to SCSIDriver */
   void *callback_pw;         /* private word (R5) for the above */
