@@ -284,7 +284,7 @@ void glue_ResetDevice(my_usb_device_t *device, int reason)
                                    device->callback_pw,
                                    device->callback_wp);
   }
-  if (!irqs_were_off) _kernel_irqs_off();
+  if (!irqs_were_off) _kernel_irqs_on();
   return;
 }
 
@@ -451,7 +451,7 @@ _kernel_oserror *glue_DoCommand(my_usb_device_t *device, uint32_t lun, uint32_t 
       ProdRTSupport();
     }
   }
-  if (!irqs_were_off) _kernel_irqs_off();
+  if (!irqs_were_off) _kernel_irqs_on();
   return NULL;
 }
 
