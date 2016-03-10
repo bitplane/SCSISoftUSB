@@ -190,7 +190,7 @@ void glue_DetachDevice(my_usb_device_t *device)
   if (device->command_active && softc->transfer_priv != NULL)
   {
     softc->transfer_priv = NULL; /* if we're interrupting ticker processing, no longer try to do a callback at end of ticker */
-    DEBUGf("Calling SCSIdriver from DetachDevice\n");
+    DEBUGf("Calling SCSIDriver from DetachDevice\n");
     asm_DoTransferCompleteCallback((_kernel_oserror *)(ErrorNumber_SCSI_Died & 0xFF),
                                    0,
                                    device->callback,
@@ -276,7 +276,7 @@ void glue_ResetDevice(my_usb_device_t *device, int reason)
   /* Do callback if necessary */
   if (softc->transfer_priv != NULL)
   {
-    DEBUGf("Calling SCSIdriver from ResetDevice\n");
+    DEBUGf("Calling SCSIDriver from ResetDevice\n");
     asm_DoTransferCompleteCallback(device->callback_error,
                                    device->callback_status_byte,
                                    device->callback,
@@ -431,7 +431,7 @@ _kernel_oserror *glue_DoCommand(my_usb_device_t *device, uint32_t lun, uint32_t 
     /* Do callback */
     if (softc->transfer_priv != NULL)
     {
-      DEBUGf("Calling SCSIdriver from DoCommand\n");
+      DEBUGf("Calling SCSIDriver from DoCommand\n");
       asm_DoTransferCompleteCallback(device->callback_error,
                                      device->callback_status_byte,
                                      device->callback,
@@ -720,7 +720,7 @@ void glue_Tick(my_usb_device_t *device)
     if (softc->transfer_priv != NULL)
     {
       DEBUGCHAR('K');
-      DEBUGf("Calling SCSIdriver from Tick, addr=%x err=%x r0=%x r4=%x r5=%x r12=%x\n", (int)device->callback, (int)device->callback_error, device->callback_status_byte, device->callback_not_transferred, (int)device->callback_pw, (int)device->callback_wp);
+      DEBUGf("Calling SCSIDriver from Tick, addr=%x err=%x r0=%x r4=%x r5=%x r12=%x\n", (int)device->callback, (int)device->callback_error, device->callback_status_byte, device->callback_not_transferred, (int)device->callback_pw, (int)device->callback_wp);
       asm_DoTransferCompleteCallback(device->callback_error,
                                      device->callback_status_byte,
                                      device->callback,

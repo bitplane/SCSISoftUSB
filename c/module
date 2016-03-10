@@ -358,7 +358,7 @@ void module_Service(int service_number, _kernel_swi_regs *r, void *pw)
       break;
       
     case Service_ModulePostInit:
-      if (strcmp((const char *)r->r[2], "SCSIdriver") == 0)
+      if (strcmp((const char *)r->r[2], "SCSIDriver") == 0)
       {
         _swix(OS_RemoveTickerEvent, _INR(0,1),
            module_scsiregister_handler,
@@ -368,16 +368,10 @@ void module_Service(int service_number, _kernel_swi_regs *r, void *pw)
           device->registered = false;
         }
         _swix(OS_CallAfter, _INR(0,2),
-           1, /* No point using a long delay if SCSIdriver has only just started */
+           1, /* No point using a long delay if SCSIDriver has only just started */
            module_scsiregister_handler,
            global_PrivateWord);
 
-      }
-      break;
-      
-    case Service_ModulePostFinal:
-      if (strcmp((const char *)r->r[2], "SCSIdriver") == 0)
-      {
       }
       break;
       
@@ -434,7 +428,7 @@ _kernel_oserror *module_SCSIRegister(_kernel_swi_regs *r, void *pw)
           global_PrivateWord);
     return NULL;
   }
-  /* Instead of registering the devices directly from this ticker event, register them from a callback. This ensures SCSIdriver's malloc()s can enlarge the RMA if needed. */
+  /* Instead of registering the devices directly from this ticker event, register them from a callback. This ensures SCSIDriver's malloc()s can enlarge the RMA if needed. */
   Registering = true;
   _swix(OS_AddCallBack, _INR(0,1),
         module_scsiregister_cb_handler,

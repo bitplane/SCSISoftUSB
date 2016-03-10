@@ -14,39 +14,23 @@
 #
 # Makefile for SCSISoftUSB
 #
-# ***********************************
-# ***    C h a n g e   L i s t    ***
-# ***********************************
-# Date         Name    Description
-# ----         ----    -----------
-# 29-Apr-2003  BJGA    Created.
-
-DEBUG ?= FALSE
-
-ifeq ($(DEBUG),TRUE)
-CFLAGS += -DDEBUGLIB -DUMASS_DEBUG -DUSB_DEBUG
-CMHGFLAGS += -DDEBUGLIB -DUMASS_DEBUG -DUSB_DEBUG
-LIBS = ${DEBUGLIBS} ${NET5LIBS}
-endif
 
 COMPONENT   = SCSISoftUSB
-TARGET      = SCSISoftUSB
+TARGET     ?= SCSISoftUSB
 OBJS        = global glue module umass umass_quirks asm
-CMHGFILE    = modhdr
 HDRS        =
-
 CINCLUDES   = -ITCPIPLibs:,C:USB
-CFLAGS      += -ffah -wp -wc -we -zM -zps1 -DDISABLE_PACKED -D_KERNEL
+CFLAGS     += -wp -wc -we -DDISABLE_PACKED -D_KERNEL
+CMHGFILE    = modhdr
 CMHGDEPENDS = glue module
 RAMCDEFINES = -DSTANDALONE
+CDFLAGS    += -DDEBUGLIB -DUMASS_DEBUG -DUSB_DEBUG
+CMHGDFLAGS += -DDEBUGLIB -DUMASS_DEBUG -DUSB_DEBUG
+RES_OBJ     = resmess
+RES_AREA    = resmess_ResourcesFiles
 
-RES_OBJ = resmess
-RES_AREA = resmess_ResourcesFiles
-
-include StdTools
-include ModStdRule
-include ModuleLibs
-include DbgRules
 include CModule
+
+DBG_LIBS   += ${SOCK5LIB} ${INETLIB}
 
 # Dynamic dependencies:
