@@ -666,7 +666,12 @@ void glue_Tick(my_usb_device_t *device)
       }
       _kernel_irqs_off();
     }
-    DEBUGf("Still in RX buffer: = %x, ", buffer_used);
+    DEBUGf("Still in RX buffer: = %x, needed: = %x ", buffer_used,device->curr_transferlength);
+    if (buffer_used > device->curr_transferlength)
+    {
+      // flush the buffer.. we're done here
+      REMOVE_BLOCK(device->current_pipe->buffer, softc->scbulkoutbuf, buffer_used);
+    }
     e = _swix(DeviceFS_CallDevice, _INR(0,2),
               DeviceCall_MonitorRX,
               device->devicefs_name,
