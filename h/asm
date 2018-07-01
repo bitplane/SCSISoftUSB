@@ -45,6 +45,7 @@
 #define REMOVE_BLOCK(buffer_id, block, length) do { asm_CallBufferManager(3, buffer_id, block, length, static_BufManWS, static_BufManRout); } while(0)
 #define USED_SPACE(buffer_id) asm_CallBufferManager(6, buffer_id, 0, 0, static_BufManWS, static_BufManRout)
 #define FREE_SPACE(buffer_id) asm_CallBufferManager(7, buffer_id, 0, 0, static_BufManWS, static_BufManRout)
+#define PURGE_SPACE(buffer_id) asm_CallBufferManager(8, buffer_id, 0, 0, static_BufManWS, static_BufManRout)
 
 
 /*****************************************************************************

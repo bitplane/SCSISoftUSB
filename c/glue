@@ -351,9 +351,9 @@ _kernel_oserror *glue_DoCommand(my_usb_device_t *device, uint32_t lun, uint32_t 
   softc->transfer_priv = NULL; /* don't do callback if we're reset from interrupt, until transfer_priv is initialised */
   device->command_active = true; /* prevent any new commands from being started until we're done */
   device->ticker_semaphore = true; /* prevent TickerV from doing anything */
-  if (!irqs_were_off) _kernel_irqs_on();
   device->background_transfer_active = false;
   device->current_fill=0;
+  if (!irqs_were_off) _kernel_irqs_on();
 
   if (data_direction != DIR_NONE << 24)
   {
@@ -406,6 +406,8 @@ _kernel_oserror *glue_DoCommand(my_usb_device_t *device, uint32_t lun, uint32_t 
      initialise, removable devices, etc.)
   */
   device->is_capacity = ((control_block[0] == 0x25) && (data_direction == (DIR_IN<<24)) && (control_block_length == 10) && (transfer_length == 8));
+
+  device->is_sensestatus = ((control_block[0] == 0x03) && (data_direction == (DIR_IN<<24)) && (control_block_length == 6));
 
   device->callback = callback; /* remember the address to call in SCSIDriver */
   device->callback_pw = callback_pw;
@@ -478,7 +480,9 @@ _kernel_oserror *glue_DoCommand(my_usb_device_t *device, uint32_t lun, uint32_t 
 void glue_Tick(my_usb_device_t *device)
 {
   /* Semaphore check .. out quickly if already here */
-  if (device->ticker_semaphore) return;
+  bool irqs_were_off = _kernel_irqs_disabled();
+  if (!irqs_were_off) _kernel_irqs_off();
+  if (device->ticker_semaphore) {if(!irqs_were_off)_kernel_irqs_on();return;}
   device->ticker_semaphore = true;
 
   DEBUGf("\nTick ");
@@ -691,6 +695,12 @@ void glue_Tick(my_usb_device_t *device)
     }
     else
     {
+    if(device->is_sensestatus && !device->curr_transferlength && buffer_used)
+    {
+      DEBUGf("Was sense status.. purging buffer of %x bytes\n ", buffer_used);
+      // flush the buffer.. we're done here
+      PURGE_SPACE(device->current_pipe->buffer);
+    }
       device->status = USBD_NORMAL_COMPLETION;
       if ((device->is_capacity) && ((softc->transfer_state == TSTATE_BBB_DATA) || (softc->transfer_state == TSTATE_CBI_DATA)) && (device->orig_scatterlist->length >= 8))
       {

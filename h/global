@@ -138,6 +138,7 @@ typedef struct my_usb_device
   bool ticker_semaphore;             /* paranoid ticker re-entrancy semaphore */
   bool background_transfer_active;   /* active and at a phase involving a bulk pipe */
   bool is_capacity;                  /* True if we're processing a CAPACITY command */
+  bool is_sensestatus;               /* True if we're processing a SENSE STATUS command */
   scatter_entry_t *orig_scatterlist; /* scatterlist pointer st start of background xfer */
   size_t orig_transferlength;        /* to-do count at start of background xfer */
   scatter_entry_t *curr_scatterlist; /* working scatterlist pointer */
