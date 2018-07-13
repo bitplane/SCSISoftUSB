@@ -447,7 +447,7 @@ _kernel_oserror *module_SCSIRegister_cb(_kernel_swi_regs *r, void *pw)
   {
     if(!device->registered)
     {
-      dprintf(("","Registering scsi device for %x \n",device));
+      dprintf(("","Registering scsi device for %p \n",device));
       device->scsi_driver_handle =RegisterSCSIDevice(device);
       device->registered = true;
     }  
@@ -534,7 +534,7 @@ static uint32_t RegisterSCSIDevice(void *device)
         global_PrivateWord,
         device,
         &scsi_driver_handle);
-  dprintf(("","Got scsi device handle %x \n",scsi_driver_handle));
+  dprintf(("","Got scsi device handle %x maxlun %d\n",scsi_driver_handle,((my_usb_device_t*)device)->maxlun));
   return scsi_driver_handle;
 }
 
