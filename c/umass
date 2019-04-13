@@ -1,11 +1,11 @@
-/*	$NetBSD: umass.c,v 1.102 2003/09/10 05:42:18 mycroft Exp $	*/
+/*	$NetBSD: umass.c,v 1.112 2004/06/22 12:21:04 mycroft Exp $	*/
 
 /*
  * Copyright (c) 2003 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * This code is derived from software contributed to The NetBSD Foundation
- * by Charles M. Hamnnum.
+ * by Charles M. Hannum.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -67,14 +67,14 @@
 
 /*
  * Universal Serial Bus Mass Storage Class specs:
- * http://www.usb.org/developers/data/devclass/usbmassover_11.pdf
- * http://www.usb.org/developers/data/devclass/usbmassbulk_10.pdf
- * http://www.usb.org/developers/data/devclass/usbmass-cbi10.pdf
- * http://www.usb.org/developers/data/devclass/usbmass-ufi10.pdf
+ * http://www.usb.org/developers/devclass_docs/usb_msc_overview_1.2.pdf
+ * http://www.usb.org/developers/devclass_docs/usbmassbulk_10.pdf
+ * http://www.usb.org/developers/devclass_docs/usb_msc_cbi_1.1.pdf
+ * http://www.usb.org/developers/devclass_docs/usbmass-ufi10.pdf
  */
 
 /*
- * Ported to NetBSD by Lennart Augustsson <augustss@netbsd.org>.
+ * Ported to NetBSD by Lennart Augustsson <augustss@NetBSD.org>.
  * Parts of the code written by Jason R. Thorpe <thorpej@shagadelic.org>.
  */
 
@@ -142,7 +142,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: umass.c,v 1.99 2003/09/08 19:57:32 mycroft Exp $");
+__KERNEL_RCSID(0, "$NetBSD: umass.c,v 1.112 2004/06/22 12:21:04 mycroft Exp $");
 
 #include "atapibus.h"
 #include "scsibus.h"
@@ -437,7 +437,7 @@ USB_ATTACH(umass)
 	usbd_status err;
 	int i, bno, error;
 
-	usbd_devinfo(uaa->device, 0, devinfo);
+	usbd_devinfo(uaa->device, 0, devinfo, sizeof(devinfo));
 	USB_ATTACH_SETUP;
 #endif
 
@@ -579,6 +579,18 @@ USB_ATTACH(umass)
 #ifndef __riscos
 	printf("%s: using %s over %s\n", USBDEVNAME(sc->sc_dev), sCommand,
 	       sWire);
+
+#ifndef NO_QUIRKS_THAT_USE_CODE
+	if (quirk != NULL && quirk->uq_init != NULL) {
+		err = (*quirk->uq_init)(sc);
+		if (err) {
+			printf("%s: quirk init failed\n",
+			       USBDEVNAME(sc->sc_dev));
+			umass_disco(sc);
+			USB_ATTACH_ERROR_RETURN;
+		}
+	}
+#endif
 
 	/*
 	 * In addition to the Control endpoint the following endpoints
@@ -742,6 +754,8 @@ USB_ATTACH(umass)
 		sc->data_buffer = usbd_alloc_buffer(sc->transfer_xfer[bno],
 						    UMASS_MAX_TRANSFER_SIZE);
 		if (sc->data_buffer == NULL) {
+			DPRINTF(UDMASS_USB, (("%s: no buffer memory\n",
+				USBDEVNAME(sc->sc_dev)));
 			umass_disco(sc);
 			USB_ATTACH_ERROR_RETURN;
 		}
@@ -764,16 +778,6 @@ USB_ATTACH(umass)
 		umass_disco(sc);
 		USB_ATTACH_ERROR_RETURN;
 	}
-
-#ifndef NO_QUIRKS_THAT_USE_CODE
-	if (quirk != NULL && quirk->uq_init != NULL) {
-		err = (*quirk->uq_init)(sc);
-		if (err) {
-			umass_disco(sc);
-			USB_ATTACH_ERROR_RETURN;
-		}
-	}
-#endif
 
 #ifndef __riscos
 	error = 0;
@@ -836,15 +840,17 @@ USB_DETACH(umass)
 	umass_disco(sc);
 	return 0;
 #else
-	struct umassbus_softc *scbus = sc->bus;
+	struct umassbus_softc *scbus;
 	int rv = 0, i, s;
 
 	DPRINTF(UDMASS_USB, ("%s: detached\n", USBDEVNAME(sc->sc_dev)));
 
 	/* Abort the pipes to wake up any waiting processes. */
 	for (i = 0 ; i < UMASS_NEP ; i++) {
-		if (sc->sc_pipe[i] != NULL)
+		if (sc->sc_pipe[i] != NULL) {
 			usbd_abort_pipe(sc->sc_pipe[i]);
+			sc->sc_pipe[i] = NULL;
+		}
 	}
 
 	/* Do we really need reference counting?  Perhaps in ioctl() */
@@ -858,6 +864,7 @@ USB_DETACH(umass)
 	}
 	splx(s);
 
+	scbus = sc->bus;
 	if (scbus != NULL) {
 		if (scbus->sc_child != NULL)
 			rv = config_detach(scbus->sc_child, flags);
@@ -1379,7 +1386,7 @@ umass_bbb_state(
 
 		/* FALLTHROUGH if no data phase, err == 0 */
 	case TSTATE_BBB_DATA:
-		/* Data transport phase, error handling (ignored if no data
+		/* Command transport phase error handling (ignored if no data
 		 * phase (fallthrough from previous state)) */
 		if (sc->transfer_dir != DIR_NONE) {
 #ifdef __riscos
@@ -1387,8 +1394,10 @@ umass_bbb_state(
 #else
 			/* retrieve the length of the transfer that was done */
 			usbd_get_xfer_status(xfer, NULL, NULL,
-					     &sc->transfer_actlen, NULL);
+			     &sc->transfer_actlen, NULL);
 #endif
+			DPRINTF(UDMASS_BBB, ("%s: BBB_DATA actlen=%d\n",
+				USBDEVNAME(sc->sc_dev), sc->transfer_actlen));
 
 			if (RISCOSSTAR err) {
 				DPRINTF(UDMASS_BBB, ("%s: Data-%s %d failed, "
@@ -1408,7 +1417,6 @@ umass_bbb_state(
 					  , sc->transfer_xfer[XFER_BBB_DCLEAR]
 #endif
 					  );
-					return;
 				} else {
 					/* Unless the error is a pipe stall the
 					 * error is fatal.
@@ -1419,8 +1427,8 @@ umass_bbb_state(
 					        , err
 #endif
 					        );
-					return;
 				}
+				return;
 			}
 		}
 
@@ -1445,7 +1453,6 @@ umass_bbb_state(
 		 * err == 0 and the following if block is passed.
 		 */
 		if (RISCOSSTAR err) {	/* should not occur */
-			/* try the transfer below, even if clear stall failed */
 			DPRINTF(UDMASS_BBB, ("%s: bulk-%s stall clear failed"
 				", %s, going to STATUS_WIRE_FAILED\n", USBDEVNAME(sc->sc_dev),
 				(sc->transfer_dir == DIR_IN? "in":"out"),
@@ -1952,10 +1959,10 @@ umass_cbi_state(
 				, err
 #endif
 				);
-
 			return;
 		}
 
+		/* Data transport phase, setup transfer */
 		sc->transfer_state = TSTATE_CBI_DATA;
 		if (sc->transfer_dir == DIR_IN) {
 			if (
@@ -1977,6 +1984,7 @@ umass_cbi_state(
 #endif
 					);
 
+			return;
 		} else if (sc->transfer_dir == DIR_OUT) {
 #ifndef __riscos
 			memcpy(sc->data_buffer, sc->transfer_data,
@@ -2001,47 +2009,55 @@ umass_cbi_state(
 #endif
 					);
 
+			return;
 		} else {
 			DPRINTF(UDMASS_CBI, ("%s: no data phase\n",
 				USBDEVNAME(sc->sc_dev)));
-			goto dostatus;
 		}
-		return;
 
+		/* FALLTHROUGH if no data phase, err == 0 */
 	case TSTATE_CBI_DATA:
+		/* Command transport phase error handling (ignored if no data
+		 * phase (fallthrough from previous state)) */
+		if (sc->transfer_dir != DIR_NONE) {
+			/* retrieve the length of the transfer that was done */
 #ifdef __riscos
-		sc->transfer_actlen = actlen;
+			sc->transfer_actlen = actlen;
 #else
-		/* retrieve the length of the transfer that was done */
-		usbd_get_xfer_status(xfer,NULL,NULL,&sc->transfer_actlen,NULL);
+			usbd_get_xfer_status(xfer, NULL, NULL,
+			    &sc->transfer_actlen, NULL);
 #endif
-		DPRINTF(UDMASS_CBI, ("%s: CBI_DATA actlen=%d\n",
-			USBDEVNAME(sc->sc_dev), sc->transfer_actlen));
+			DPRINTF(UDMASS_CBI, ("%s: CBI_DATA actlen=%d\n",
+				USBDEVNAME(sc->sc_dev), sc->transfer_actlen));
 
-		if (RISCOSSTAR err) {
-			DPRINTF(UDMASS_CBI, ("%s: Data-%s %d failed, "
-				"%s\n", USBDEVNAME(sc->sc_dev),
-				(sc->transfer_dir == DIR_IN?"in":"out"),
-				sc->transfer_datalen,usbd_errstr(RISCOSSTAR err)));
+			if (RISCOSSTAR err) {
+				DPRINTF(UDMASS_CBI, ("%s: Data-%s %d failed, "
+					"%s\n", USBDEVNAME(sc->sc_dev),
+					(sc->transfer_dir == DIR_IN?"in":"out"),
+					sc->transfer_datalen,usbd_errstr(RISCOSSTAR err)));
 
-			if (RISCOSSTAR err == USBD_STALLED) {
-				sc->transfer_state = TSTATE_CBI_DCLEAR;
+				if (RISCOSSTAR err == USBD_STALLED) {
+					sc->transfer_state = TSTATE_CBI_DCLEAR;
 #ifdef __riscos
-				*err =
+					*err =
 #endif
-				umass_clear_endpoint_stall(sc, UMASS_BULKIN
+					umass_clear_endpoint_stall(sc, UMASS_BULKIN
 #ifndef __riscos
-					, sc->transfer_xfer[XFER_CBI_DCLEAR]
+						, sc->transfer_xfer[XFER_CBI_DCLEAR]
 #endif
-					);
-			} else {
-				umass_cbi_reset(sc, STATUS_WIRE_FAILED
+						);
+				} else {
+					/* Unless the error is a pipe stall the
+					 * error is fatal.
+					 */
+					umass_cbi_reset(sc, STATUS_WIRE_FAILED
 #ifdef __riscos
-					, err
+						, err
 #endif
-					);
+						);
+				}
+				return;
 			}
-			return;
 		}
 
 #ifndef __riscos
@@ -2054,7 +2070,7 @@ umass_cbi_state(
 					umass_dump_buffer(sc, sc->transfer_data,
 						sc->transfer_actlen, 48));
 
-	dostatus:
+		/* Status phase */
 		if (sc->sc_wire == UMASS_WPROTO_CBI_I) {
 			sc->transfer_state = TSTATE_CBI_STATUS;
 			memset(&sc->sbl, 0, sizeof(sc->sbl));
@@ -2168,6 +2184,7 @@ umass_cbi_state(
 					status = STATUS_CMD_FAILED;
 					break;
 				case IDB_VALUE_PHASE:
+				default: /* XXX: gcc */
 					status = STATUS_WIRE_FAILED;
 					break;
 				}
@@ -2180,22 +2197,18 @@ umass_cbi_state(
 		return;
 
 	case TSTATE_CBI_DCLEAR:
-		if (RISCOSSTAR err) {	/* should not occur */
 #ifndef __riscos
-			printf("%s: CBI bulk-in/out stall clear failed, %s\n",
-			       USBDEVNAME(sc->sc_dev), usbd_errstr(RISCOSSTAR err));
+		if (err)	/* should not occur */
+			printf("%s: CBI bulk-%s stall clear failed, %s\n",
+			    USBDEVNAME(sc->sc_dev),
+			    (sc->transfer_dir == DIR_IN? "in":"out"),
+			    usbd_errstr(err));
 #endif
-			umass_cbi_reset(sc, STATUS_WIRE_FAILED
+		umass_cbi_reset(sc, STATUS_WIRE_FAILED
 #ifdef __riscos
-				, err
+			, err
 #endif
-				);
-		}
-
-		sc->transfer_state = TSTATE_IDLE;
-		sc->transfer_cb(sc, sc->transfer_priv,
-				sc->transfer_datalen,
-				STATUS_CMD_FAILED);
+			);
 		return;
 
 	case TSTATE_CBI_SCLEAR:
@@ -2368,11 +2381,7 @@ Static void
 umass_bbb_dump_csw(struct umass_softc *sc, umass_bbb_csw_t *csw)
 {
 	int sig = UGETDW(csw->dCSWSignature);
-#ifdef __riscos
 	int tag = UGETDW(csw->dCSWTag);
-#else
-	int tag = UGETW(csw->dCSWTag);
-#endif
 	int res = UGETDW(csw->dCSWDataResidue);
 	int status = csw->bCSWStatus;
 
@@ -2397,7 +2406,7 @@ umass_dump_buffer(struct umass_softc *sc, u_int8_t *buffer, int buflen,
 	s1[0] = '\0';
 	s3[0] = '\0';
 
-	sprintf(s2, " buffer=%p, buflen=%d", buffer, buflen);
+	snprintf(s2, sizeof(s2), " buffer=%p, buflen=%d", buffer, buflen);
 	for (i = 0; i < buflen && i < printlen; i++) {
 		j = i % 16;
 		if (j == 0 && i != 0) {
@@ -2405,10 +2414,11 @@ umass_dump_buffer(struct umass_softc *sc, u_int8_t *buffer, int buflen,
 				USBDEVNAME(sc->sc_dev), s1, s2));
 			s2[0] = '\0';
 		}
-		sprintf(&s1[j*2], "%02x", buffer[i] & 0xff);
+		snprintf(&s1[j * 2], sizeof(s1) - j * 2, "%02x",
+		    buffer[i] & 0xff);
 	}
 	if (buflen > printlen)
-		sprintf(s3, " ...");
+		snprintf(s3, sizeof(s3), " ...");
 	DPRINTF(UDMASS_GEN, ("%s: 0x %s%s%s\n",
 		USBDEVNAME(sc->sc_dev), s1, s2, s3));
 }
