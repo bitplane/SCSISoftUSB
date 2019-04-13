@@ -1,4 +1,41 @@
-/*	$NetBSD: umass.c,v 1.99 2003/09/08 19:57:32 mycroft Exp $	*/
+/*	$NetBSD: umass.c,v 1.102 2003/09/10 05:42:18 mycroft Exp $	*/
+
+/*
+ * Copyright (c) 2003 The NetBSD Foundation, Inc.
+ * All rights reserved.
+ *
+ * This code is derived from software contributed to The NetBSD Foundation
+ * by Charles M. Hamnnum.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *        This product includes software developed by the NetBSD
+ *        Foundation, Inc. and its contributors.
+ * 4. Neither the name of The NetBSD Foundation nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
 /*-
  * Copyright (c) 1999 MAEKAWA Masahide <bishop@rr.iij4u.or.jp>,
  *		      Nick Hibma <n_hibma@freebsd.org>
@@ -463,10 +500,6 @@ USB_ATTACH(umass)
 		}
 	}
 
-	/* XXX - Now unsupported CBI with CCI */
-	if (sc->sc_wire == UMASS_WPROTO_CBI_I)
-		sc->sc_wire = UMASS_WPROTO_CBI;
-
 	if (sc->sc_cmd == UMASS_CPROTO_UNSPEC) {
 #ifdef __riscos
 		switch (InterfaceSubClass) {
@@ -614,6 +647,9 @@ USB_ATTACH(umass)
 	}
 
 	/* Open the bulk-in and -out pipe */
+	DPRINTF(UDMASS_USB, ("%s: opening iface %p epaddr %d for BULKOUT\n",
+		USBDEVNAME(sc->sc_dev), sc->sc_iface,
+		sc->sc_epaddr[UMASS_BULKOUT]));
 	err = usbd_open_pipe(sc->sc_iface, sc->sc_epaddr[UMASS_BULKOUT],
 #ifdef __riscos
 				UMASS_BULKOUT,
@@ -627,6 +663,9 @@ USB_ATTACH(umass)
 		umass_disco(sc);
 		USB_ATTACH_ERROR_RETURN;
 	}
+	DPRINTF(UDMASS_USB, ("%s: opening iface %p epaddr %d for BULKIN\n",
+		USBDEVNAME(sc->sc_dev), sc->sc_iface,
+		sc->sc_epaddr[UMASS_BULKIN]));
 	err = usbd_open_pipe(sc->sc_iface, sc->sc_epaddr[UMASS_BULKIN],
 #ifdef __riscos
 				UMASS_BULKIN,
@@ -653,6 +692,9 @@ USB_ATTACH(umass)
 	 * arriving concurrently.
 	 */
 	if (sc->sc_wire == UMASS_WPROTO_CBI_I) {
+		DPRINTF(UDMASS_USB, ("%s: opening iface %p epaddr %d for INTRIN\n",
+			USBDEVNAME(sc->sc_dev), sc->sc_iface,
+			sc->sc_epaddr[UMASS_INTRIN]));
 		err = usbd_open_pipe(sc->sc_iface, sc->sc_epaddr[UMASS_INTRIN],
 #ifdef __riscos
 				UMASS_INTRIN,
@@ -1382,6 +1424,8 @@ umass_bbb_state(
 			}
 		}
 
+		/* FALLTHROUGH, err == 0 (no data phase or successful) */
+	case TSTATE_BBB_DCLEAR: /* stall clear after data phase */
 #ifndef __riscos
 		if (sc->transfer_dir == DIR_IN)
 			memcpy(sc->transfer_data, sc->data_buffer,
@@ -1393,7 +1437,6 @@ umass_bbb_state(
 						sc->transfer_datalen, 48));
 
 		/* FALLTHROUGH, err == 0 (no data phase or successful) */
-	case TSTATE_BBB_DCLEAR: /* stall clear after data phase */
 	case TSTATE_BBB_SCLEAR: /* stall clear after status phase */
 		/* Reading of CSW after bulk stall condition in data phase
 		 * (TSTATE_BBB_DATA2) or bulk-in stall condition after
@@ -1958,43 +2001,11 @@ umass_cbi_state(
 #endif
 					);
 
-		} else if (sc->sc_wire == UMASS_WPROTO_CBI_I) {
-			DPRINTF(UDMASS_CBI, ("%s: no data phase\n",
-				USBDEVNAME(sc->sc_dev)));
-			sc->transfer_state = TSTATE_CBI_STATUS;
-#ifdef __riscos /* I assume it's worthwhile doing this here too */
-			memset(&sc->sbl, 0, sizeof(sc->sbl));
-#endif
-			if (
-#ifdef __riscos
-			    (*err =
-#endif
-			    umass_setup_transfer(sc, sc->sc_pipe[UMASS_INTRIN],
-					&sc->sbl, sizeof(sc->sbl),
-					0	/* fixed length transfer */
-#ifdef __riscos
-					)) != USBD_NORMAL_COMPLETION)
-#else
-					, sc->transfer_xfer[XFER_CBI_STATUS]))
-#endif
-			{
-				umass_cbi_reset(sc, STATUS_WIRE_FAILED
-#ifdef __riscos
-					, err
-#endif
-					);
-			}
 		} else {
 			DPRINTF(UDMASS_CBI, ("%s: no data phase\n",
 				USBDEVNAME(sc->sc_dev)));
-			/* No command completion interrupt. Request
-			 * sense data.
-			 */
-			sc->transfer_state = TSTATE_IDLE;
-			sc->transfer_cb(sc, sc->transfer_priv,
-			       0, STATUS_CMD_UNKNOWN);
+			goto dostatus;
 		}
-
 		return;
 
 	case TSTATE_CBI_DATA:
@@ -2043,6 +2054,7 @@ umass_cbi_state(
 					umass_dump_buffer(sc, sc->transfer_data,
 						sc->transfer_actlen, 48));
 
+	dostatus:
 		if (sc->sc_wire == UMASS_WPROTO_CBI_I) {
 			sc->transfer_state = TSTATE_CBI_STATUS;
 			memset(&sc->sbl, 0, sizeof(sc->sbl));
@@ -2058,13 +2070,11 @@ umass_cbi_state(
 #else
 				    , sc->transfer_xfer[XFER_CBI_STATUS]))
 #endif
-			{
 				umass_cbi_reset(sc, STATUS_WIRE_FAILED
 #ifdef __riscos
 					, err
 #endif
 					);
-			}
 		} else {
 			/* No command completion interrupt. Request
 			 * sense to get status of command.
@@ -2105,6 +2115,17 @@ umass_cbi_state(
 
 		/* Dissect the information in the buffer */
 
+		{
+#ifndef __riscos
+			u_int32_t actlen;
+			usbd_get_xfer_status(xfer,NULL,NULL,&actlen,NULL);
+#endif
+			DPRINTF(UDMASS_CBI, ("%s: CBI_STATUS actlen=%d\n",
+				USBDEVNAME(sc->sc_dev), actlen));
+			if (actlen != 2)
+				break;
+		}
+
 		if (sc->sc_cmd == UMASS_CPROTO_UFI) {
 			int status;
 
@@ -2118,42 +2139,42 @@ umass_cbi_state(
 				USBDEVNAME(sc->sc_dev),
 				sc->sbl.ufi.asc, sc->sbl.ufi.ascq));
 
-			if (sc->sbl.ufi.asc == 0 && sc->sbl.ufi.ascq == 0)
+			if ((sc->sbl.ufi.asc == 0 && sc->sbl.ufi.ascq == 0) ||
+			    sc->sc_sense)
 				status = STATUS_CMD_OK;
 			else
 				status = STATUS_CMD_FAILED;
 
-			/* No sense, command successful */
-#ifdef __riscos
+			/* No autosense, command successful */
 			sc->transfer_state = TSTATE_IDLE;
 			sc->transfer_cb(sc, sc->transfer_priv,
-			                sc->transfer_datalen - sc->transfer_actlen, status);
-#endif
+			    sc->transfer_datalen - sc->transfer_actlen, status);
 		} else {
+			int status;
+
 			/* Command Interrupt Data Block */
+
 			DPRINTF(UDMASS_CBI, ("%s: type=0x%02x, value=0x%02x\n",
 				USBDEVNAME(sc->sc_dev),
 				sc->sbl.common.type, sc->sbl.common.value));
 
 			if (sc->sbl.common.type == IDB_TYPE_CCI) {
-				int err;
-
-				if ((sc->sbl.common.value&IDB_VALUE_STATUS_MASK)
-							== IDB_VALUE_PASS) {
-					err = STATUS_CMD_OK;
-				} else if ((sc->sbl.common.value & IDB_VALUE_STATUS_MASK)
-							== IDB_VALUE_FAIL ||
-					   (sc->sbl.common.value & IDB_VALUE_STATUS_MASK)
-						== IDB_VALUE_PERSISTENT) {
-					err = STATUS_CMD_FAILED;
-				} else {
-					err = STATUS_WIRE_FAILED;
+				switch (sc->sbl.common.value & IDB_VALUE_STATUS_MASK) {
+				case IDB_VALUE_PASS:
+					status = STATUS_CMD_OK;
+					break;
+				case IDB_VALUE_FAIL:
+				case IDB_VALUE_PERSISTENT:
+					status = STATUS_CMD_FAILED;
+					break;
+				case IDB_VALUE_PHASE:
+					status = STATUS_WIRE_FAILED;
+					break;
 				}
 
 				sc->transfer_state = TSTATE_IDLE;
 				sc->transfer_cb(sc, sc->transfer_priv,
-						sc->transfer_datalen,
-						err);
+				    sc->transfer_datalen - sc->transfer_actlen, status);
 			}
 		}
 		return;
