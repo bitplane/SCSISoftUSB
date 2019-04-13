@@ -1181,6 +1181,41 @@ usbd_status usbd_do_request(usbd_device_handle pipe, usb_device_request_t *req, 
 }
 
 /*****************************************************************************
+* usbd_do_request_flags
+*
+* Sends a request to the default endpoint of the specified device.
+* The BSD code was designed to link directly with the equivalent routine
+* inside the USB driver.
+*
+* Assumptions
+*  Only flags = USBD_SHORT_XFER_OK, no actlen, and timo = USBD_DEFAULT_TIMEOUT are used
+*
+* Inputs
+*  pipe:   we're actually using this as our device handle
+*  req:    pointer to the fixed fields of the request
+*  data:   pointer to the data buffer associated with the request
+*  flags:  request flags
+*  actlen: variable to receive the actual length
+*  timo:   timeout in ms
+*   
+*
+* Outputs
+*  NONE
+*
+* Returns
+*  BSD-style status code
+*****************************************************************************/
+usbd_status usbd_do_request_flags(usbd_device_handle pipe, usb_device_request_t *req, void *data,
+                                  u_int16_t flags, int *actlen, u_int32_t timo)
+{
+  if ((flags != USBD_SHORT_XFER_OK) || (timo != USBD_DEFAULT_TIMEOUT) || (actlen != NULL))
+    return USBD_INVAL;
+  /* Since USBDriver 0.26 any usbd_do_request has actually allowed short transfers with a 
+     default timeout. Perhaps a new DeviceFS_CallDevice would have been more appropriate? */
+  return usbd_do_request(pipe, req, data);
+}
+
+/*****************************************************************************
 * usbd_open_pipe
 *
 * Opens a bulk pipe of the specified direction to the specified endpoint of the

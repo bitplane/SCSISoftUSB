@@ -1,4 +1,4 @@
-/*	$NetBSD: umass.c,v 1.95 2003/02/16 23:14:06 augustss Exp $	*/
+/*	$NetBSD: umass.c,v 1.99 2003/09/08 19:57:32 mycroft Exp $	*/
 /*-
  * Copyright (c) 1999 MAEKAWA Masahide <bishop@rr.iij4u.or.jp>,
  *		      Nick Hibma <n_hibma@freebsd.org>
@@ -105,7 +105,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: umass.c,v 1.95 2003/02/16 23:14:06 augustss Exp $");
+__KERNEL_RCSID(0, "$NetBSD: umass.c,v 1.99 2003/09/08 19:57:32 mycroft Exp $");
 
 #include "atapibus.h"
 #include "scsibus.h"
@@ -144,6 +144,9 @@ __KERNEL_RCSID(0, "$NetBSD: umass.c,v 1.95 2003/02/16 23:14:06 augustss Exp $");
 #include <dev/usb/umass_quirks.h>
 #include <dev/usb/umass_scsipi.h>
 #include <dev/usb/umass_isdata.h>
+
+#include <dev/scsipi/scsipi_all.h>
+#include <dev/scsipi/scsipiconf.h>
 #endif
 
 #ifdef __riscos
@@ -489,12 +492,12 @@ USB_ATTACH(umass)
 			DPRINTF(UDMASS_GEN,
 				("%s: Unsupported command protocol %u\n",
 				USBDEVNAME(sc->sc_dev),
-				InterfaceProtocol));
+				InterfaceSubClass));
 #else
 			DPRINTF(UDMASS_GEN,
 				("%s: Unsupported command protocol %u\n",
 				USBDEVNAME(sc->sc_dev),
-				id->bInterfaceProtocol));
+				id->bInterfaceSubClass));
 #endif
 			USB_ATTACH_ERROR_RETURN;
 		}
@@ -597,14 +600,15 @@ USB_ATTACH(umass)
 	/*
 	 * Get the maximum LUN supported by the device.
 	 */
-	if (sc->sc_wire == UMASS_WPROTO_BBB &&
-	    !(sc->sc_quirks & UMASS_QUIRK_NO_MAX_LUN)) {
+	if (sc->sc_wire == UMASS_WPROTO_BBB) {
 		err = umass_bbb_get_max_lun(sc, &sc->maxlun);
 		if (err) {
 			DPRINTF(UDMASS_USB,("%s: unable to get Max Lun: %s\n",
 			       USBDEVNAME(sc->sc_dev), usbd_errstr(err)));
 			USB_ATTACH_ERROR_RETURN;
 		}
+		if (sc->maxlun > 0)
+			sc->sc_busquirks |= PQUIRK_FORCELUNS;
 	} else {
 		sc->maxlun = 0;
 	}
@@ -737,7 +741,7 @@ USB_ATTACH(umass)
 #if NSCSIBUS > 0
 		error = umass_scsi_attach(sc);
 #else
-		printf("%s: atapibus not configured\n", USBDEVNAME(sc->sc_dev));
+		printf("%s: scsibus not configured\n", USBDEVNAME(sc->sc_dev));
 #endif
 		break;
 
@@ -746,7 +750,8 @@ USB_ATTACH(umass)
 #if NATAPIBUS > 0
 		error = umass_atapi_attach(sc);
 #else
-		printf("%s: scsibus not configured\n", USBDEVNAME(sc->sc_dev));
+		printf("%s: atapibus not configured\n",
+		       USBDEVNAME(sc->sc_dev));
 #endif
 		break;
 
@@ -2276,7 +2281,8 @@ umass_bbb_get_max_lun(struct umass_softc *sc, u_int8_t *maxlun)
 	USETW(req.wIndex, sc->sc_ifaceno);
 	USETW(req.wLength, 1);
 
-	err = usbd_do_request(sc->sc_udev, &req, maxlun);
+	err = usbd_do_request_flags(sc->sc_udev, &req, maxlun,
+	    USBD_SHORT_XFER_OK, 0, USBD_DEFAULT_TIMEOUT);
 	switch (err) {
 	case USBD_NORMAL_COMPLETION:
 		DPRINTF(UDMASS_BBB, ("%s: Max Lun %d\n",
