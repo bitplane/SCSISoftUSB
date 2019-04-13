@@ -1,4 +1,4 @@
-/*	$NetBSD: umass.c,v 1.112 2004/06/22 12:21:04 mycroft Exp $	*/
+/*	$NetBSD: umass.c,v 1.123 2007/01/09 16:46:02 christos Exp $	*/
 
 /*
  * Copyright (c) 2003 The NetBSD Foundation, Inc.
@@ -142,7 +142,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: umass.c,v 1.112 2004/06/22 12:21:04 mycroft Exp $");
+__KERNEL_RCSID(0, "$NetBSD: umass.c,v 1.123 2007/01/09 16:46:02 christos Exp $");
 
 #include "atapibus.h"
 #include "scsibus.h"
@@ -194,7 +194,7 @@ __KERNEL_RCSID(0, "$NetBSD: umass.c,v 1.112 2004/06/22 12:21:04 mycroft Exp $");
 #include <stdio.h>
 int umassdebug = 0;
 
-char *states[TSTATE_STATES+1] = {
+const char *states[TSTATE_STATES+1] = {
 	/* should be kept in sync with the list at transfer_state */
 	"Idle",
 	"BBB CBW",
@@ -433,12 +433,14 @@ USB_ATTACH(umass)
 	usb_interface_descriptor_t *id;
 	usb_endpoint_descriptor_t *ed;
 	const char *sWire, *sCommand;
-	char devinfo[1024];
+	char *devinfop;
 	usbd_status err;
 	int i, bno, error;
 
-	usbd_devinfo(uaa->device, 0, devinfo, sizeof(devinfo));
+	devinfop = usbd_devinfo_alloc(uaa->device, 0);
 	USB_ATTACH_SETUP;
+	printf("%s: %s\n", USBDEVNAME(sc->sc_dev), devinfop);
+	usbd_devinfo_free(devinfop);
 #endif
 
 	sc->sc_udev = uaa->device;
@@ -535,10 +537,6 @@ USB_ATTACH(umass)
 			USB_ATTACH_ERROR_RETURN;
 		}
 	}
-
-#ifndef __riscos
-	printf("%s: %s\n", USBDEVNAME(sc->sc_dev), devinfo);
-#endif
 
 	switch (sc->sc_wire) {
 	case UMASS_WPROTO_CBI:
@@ -847,10 +845,8 @@ USB_DETACH(umass)
 
 	/* Abort the pipes to wake up any waiting processes. */
 	for (i = 0 ; i < UMASS_NEP ; i++) {
-		if (sc->sc_pipe[i] != NULL) {
+		if (sc->sc_pipe[i] != NULL)
 			usbd_abort_pipe(sc->sc_pipe[i]);
-			sc->sc_pipe[i] = NULL;
-		}
 	}
 
 	/* Do we really need reference counting?  Perhaps in ioctl() */
@@ -1136,6 +1132,9 @@ umass_bbb_transfer(struct umass_softc *sc, int lun, const void *cmd, int cmdlen,
 		sc->sc_wire));
 
 #ifndef __riscos
+	if (sc->sc_dying)
+		return;
+
 	/* Be a little generous. */
 	sc->timeout = timeout + USBD_DEFAULT_TIMEOUT;
 #endif
@@ -1731,6 +1730,16 @@ umass_cbi_adsc(struct umass_softc *sc,
 		("sc->sc_wire == 0x%02x wrong for umass_cbi_adsc\n",
 		sc->sc_wire));
 
+	if ((sc->sc_cmd == UMASS_CPROTO_RBC) &&
+	    (sc->sc_quirks & UMASS_QUIRK_RBC_PAD_TO_12) != 0 && buflen < 12) {
+#ifdef __riscos
+		memset((void *)(buffer + buflen), 0, 12 - buflen);
+#else
+		(void)memset(buffer + buflen, 0, 12 - buflen);
+#endif
+		buflen = 12;
+	}
+
 	sc->sc_req.bmRequestType = UT_WRITE_CLASS_INTERFACE;
 	sc->sc_req.bRequest = UR_CBI_ADSC;
 	USETW(sc->sc_req.wValue, 0);
@@ -1970,8 +1979,7 @@ umass_cbi_state(
 			    (*err =
 #endif
 			    umass_setup_transfer(sc, sc->sc_pipe[UMASS_BULKIN],
-					sc->transfer_data,
-					sc->transfer_datalen,
+					sc->data_buffer, sc->transfer_datalen,
 #ifdef __riscos
 					USBD_DATA_IS_SCATTER_LIST)) != USBD_NORMAL_COMPLETION)
 #else
@@ -1995,8 +2003,7 @@ umass_cbi_state(
 			    (*err =
 #endif
 			    umass_setup_transfer(sc, sc->sc_pipe[UMASS_BULKOUT],
-					sc->transfer_data,
-					sc->transfer_datalen,
+					sc->data_buffer, sc->transfer_datalen,
 #ifdef __riscos
 					USBD_DATA_IS_SCATTER_LIST)) != USBD_NORMAL_COMPLETION)
 #else
@@ -2197,40 +2204,41 @@ umass_cbi_state(
 		return;
 
 	case TSTATE_CBI_DCLEAR:
+		if (RISCOSSTAR err) {	/* should not occur */
 #ifndef __riscos
-		if (err)	/* should not occur */
 			printf("%s: CBI bulk-%s stall clear failed, %s\n",
 			    USBDEVNAME(sc->sc_dev),
 			    (sc->transfer_dir == DIR_IN? "in":"out"),
 			    usbd_errstr(err));
 #endif
-		umass_cbi_reset(sc, STATUS_WIRE_FAILED
+			umass_cbi_reset(sc, STATUS_WIRE_FAILED
 #ifdef __riscos
-			, err
+				, err
 #endif
-			);
+				);
+		} else {
+			sc->transfer_state = TSTATE_IDLE;
+			sc->transfer_cb(sc, sc->transfer_priv,
+			    sc->transfer_datalen, STATUS_CMD_FAILED);
+		}
 		return;
 
 	case TSTATE_CBI_SCLEAR:
+		if (RISCOSSTAR err) {	/* should not occur */
 #ifndef __riscos
-		if (err)	/* should not occur */
 			printf("%s: CBI intr-in stall clear failed, %s\n",
 			       USBDEVNAME(sc->sc_dev), usbd_errstr(err));
-#else
-		if (RISCOSSTAR err) {	/* should not occur */
-			umass_cbi_reset(sc, STATUS_WIRE_FAILED, err);                        
+#endif
+			umass_cbi_reset(sc, STATUS_WIRE_FAILED
+#ifdef __riscos
+				, err
+#endif
+				);
 		} else {
 			sc->transfer_state = TSTATE_IDLE;
 			sc->transfer_cb(sc, sc->transfer_priv,
 			                sc->transfer_datalen, STATUS_CMD_FAILED);
 		}
-#endif
-		/* Something really bad is going on. Reset the device */
-		umass_cbi_reset(sc, STATUS_CMD_FAILED
-#ifdef __riscos
-			, err
-#endif
-			);
 		return;
 
 	/***** CBI Reset *****/
