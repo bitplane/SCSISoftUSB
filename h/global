@@ -193,7 +193,7 @@ extern int global_RTSupportHandle; /* RTSupport handle */
 extern callback_type global_CallbackType; /* Type of our registered callback, if any */
 extern uint32_t global_PopUpDelay; /* Delay before SCSIFS gets told about new devices */ 
 #ifdef UMASS_DEBUG
-extern char *states[];
+extern const char *states[];
 #endif
 /*****************************************************************************
 * Function prototypes

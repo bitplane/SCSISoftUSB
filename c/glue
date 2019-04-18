@@ -317,10 +317,10 @@ void glue_ResetDevice(my_usb_device_t *device, int reason)
 *****************************************************************************/
 _kernel_oserror *glue_DoCommand(my_usb_device_t *device, uint32_t lun, uint32_t data_direction, const char *control_block, size_t control_block_length, scatter_entry_t *scatter_list, size_t transfer_length, void (*callback)(void), void *callback_pw, void *callback_wp)
 {
-  DEBUGf("\nDoCommand device %p lun %x\n",device,lun);
-  if(lun > device->maxlun )
+  DEBUGf("\nDoCommand device %p lun %x\n",(void *)device,lun);
+  if (lun > device->maxlun)
   {
-    DEBUGf("\nLUN was too large asked %d max %d %p\n",lun,device->maxlun);
+    DEBUGf("\nLUN was too large asked %d max %d\n",lun,device->maxlun);
     return (_kernel_oserror *)(ErrorNumber_SCSI_Died & 0xFF);
   }
 
@@ -485,18 +485,19 @@ _kernel_oserror *glue_DoCommand(my_usb_device_t *device, uint32_t lun, uint32_t 
 *****************************************************************************/
 void glue_Tick(my_usb_device_t *device)
 {
+  /* Assume interrupts are disabled on entry - */
+  /* this will be true for TickerV and the RTSupport wrapper */
+#ifdef UMASS_DEBUG
+  _kernel_irqs_off(); /* In case PRINTF_OUTPUT */
+#endif
+
   /* Semaphore check .. out quickly if already here */
-  bool irqs_were_off = _kernel_irqs_disabled();
-  if (!irqs_were_off) _kernel_irqs_off();
-  if (device->ticker_semaphore) {if(!irqs_were_off)_kernel_irqs_on();return;}
+  if (device->ticker_semaphore) return;
   device->ticker_semaphore = true;
 
   DEBUGf("\nTick ");
   struct umass_softc *softc = (struct umass_softc *)device->softc;
   DEBUGf("Initial state, status = %x %x ", softc->transfer_state, device->status);
-  
-  /* Assume interrupts are disabled on entry - */
-  /* this will be true for TickerV and the RTSupport wrapper */
 
   _kernel_oserror *e;
   size_t buffer_used;
@@ -677,11 +678,6 @@ void glue_Tick(my_usb_device_t *device)
       _kernel_irqs_off();
     }
     DEBUGf("Still in RX buffer: = %x, needed: = %x ", buffer_used,device->curr_transferlength);
-//    if (buffer_used > device->curr_transferlength)
-//    {
-//      // flush the buffer.. we're done here
-//      REMOVE_BLOCK(device->current_pipe->buffer, softc->scbulkoutbuf, buffer_used);
-//    }
     e = _swix(DeviceFS_CallDevice, _INR(0,2),
               DeviceCall_MonitorRX,
               device->devicefs_name,
@@ -736,7 +732,7 @@ void glue_Tick(my_usb_device_t *device)
     {
       DEBUGCHAR('K');
       DEBUGf("Calling SCSIDriver from Tick, addr=%x err=%x r0=%x r4=%x r5=%x r12=%x\n", (int)device->callback, (int)device->callback_error, device->callback_status_byte, device->callback_not_transferred, (int)device->callback_pw, (int)device->callback_wp);
-      softc->transfer_priv = NULL; // make sure it cannot be repeated
+      softc->transfer_priv = NULL; /* make sure it cannot be repeated */
       asm_DoTransferCompleteCallback(device->callback_error,
                                      device->callback_status_byte,
                                      device->callback,
@@ -860,7 +856,7 @@ static void Callback(struct umass_softc *softc, void *void_device, int not_trans
   IGNORE(softc);
   my_usb_device_t *device = (my_usb_device_t *)void_device;
   DEBUGf("Callback, status %d\n",status);
-  if(!device)return;   // already handled when it went wrong
+  if (!device) return;   /* Already handled when it went wrong */
   switch (status)
   {
     case STATUS_CMD_OK:
