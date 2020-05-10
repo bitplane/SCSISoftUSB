@@ -1543,11 +1543,13 @@ umass_bbb_state(
 		DIF(UDMASS_BBB, umass_bbb_dump_csw(sc, &sc->csw));
 
 #ifdef __riscos
-		/* Based on an idea from umass.c revision 1.146 (which is some way
-		 * ahead), rather than have a large table of UMASS_QUIRK_IGNORE_RESIDUE
-		 * ignore the csw and always use what the USB stack actually transferred.
+		/* Rather than have a large table of UMASS_QUIRK_IGNORE_RESIDUE, only believe the
+		 * returned value if it's plausibly less than the amount requested in the first
+		 * place, otherwise replace it with what the USB stack thinks it did. This catches endian
+		 * swap and garbage upper bytes, which seemed to be the most common class of quirk.
 		 */
-		USETDW(sc->csw.dCSWDataResidue, sc->transfer_datalen - sc->transfer_actlen); 
+		if (UGETDW(sc->csw.dCSWDataResidue) > sc->transfer_datalen)
+			USETDW(sc->csw.dCSWDataResidue, sc->transfer_datalen - sc->transfer_actlen); 
 #endif
 		/* Translate weird command-status signatures. */
 		if ((sc->sc_quirks & UMASS_QUIRK_WRONG_CSWSIG) &&
