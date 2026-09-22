@@ -95,7 +95,15 @@ asm_RTSupportWrapper
         MOV     r10, r10, LSL #20
         STMIA   r10, {r0-r1}
         ADD     r10, r10, #540
+      [ GNU
+        SUB     sp, sp, #12
+        MOV     r0, sp
         BL      RTSupportWrapper
+        LDMIA   sp, {r0-r2}
+        ADD     sp, sp, #12
+      |
+        BL      RTSupportWrapper
+      ]
         MSR     CPSR_c, #SYS32_mode     ; Must return to RTSupport in SYS mode
         MOV     pc, lr
 

@@ -921,7 +921,11 @@ static void Callback(struct umass_softc *softc, void *void_device, int not_trans
 *  Time of next execution. May not return at all if the RTSupport callback is
 *  no longer needed.
 *****************************************************************************/
+#ifdef __GNUC__
+void RTSupportWrapper(rtsupport_routine_result *result)
+#else
 __value_in_regs rtsupport_routine_result RTSupportWrapper(void)
+#endif
 {
   unsigned int time;
   _kernel_oserror *e;
@@ -954,7 +958,11 @@ __value_in_regs rtsupport_routine_result RTSupportWrapper(void)
   /* Else get time of next execution */
 exit:
   _swix(OS_ReadMonotonicTime,_OUT(0),&time);
+#ifdef __GNUC__
+  *result = (rtsupport_routine_result) { 1<<2, NULL, time+1 };
+#else
   return (rtsupport_routine_result) { 1<<2, NULL, time+1 };
+#endif
 }
 
 /*****************************************************************************

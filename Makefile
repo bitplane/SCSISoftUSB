@@ -19,8 +19,15 @@ COMPONENT   = SCSISoftUSB
 TARGET     ?= SCSISoftUSB
 OBJS        = global glue module umass umass_quirks asm
 HDRS        =
+ifeq (${TOOLCHAIN},GNU)
+CINCLUDES   = ${USBINC} ${OSINC}
+CFLAGS     += -D_BSD_SOURCE -include sys/types.h -include time.h -idirafter ${LIBDIR}/TCPIPLibs
+ASMDEFINES += -PD "GNU SETL {TRUE}"
+else
 CINCLUDES   = -ITCPIPLibs:,C:USB
-CFLAGS     += -wp -wc -we -DDISABLE_PACKED -D_KERNEL
+CFLAGS     += -wp -wc -we
+endif
+CFLAGS     += -DDISABLE_PACKED -D_KERNEL
 CMHGFILE    = modhdr
 CMHGDEPENDS = glue module
 RAMCDEFINES = -DSTANDALONE

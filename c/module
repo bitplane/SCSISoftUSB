@@ -41,6 +41,13 @@
 #include "kernel.h"
 #include "swis.h"
 
+#ifndef SCSI_Deregister
+#define SCSI_Deregister 0x000403FE
+#endif
+#ifndef SCSI_Register
+#define SCSI_Register 0x000403FF
+#endif
+
 #include "Global/Services.h"
 #include "Global/RISCOS.h"
 #include "Interface/SCSIErr.h"

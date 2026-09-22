@@ -228,7 +228,11 @@ extern void glue_BufferThresholdCheck(uint32_t buffer,bool filling);
 *  Time of next execution. May not return at all if the RTSupport callback is
 *  no longer needed.
 *****************************************************************************/
+#ifdef __GNUC__
+void RTSupportWrapper(rtsupport_routine_result *result);
+#else
 __value_in_regs rtsupport_routine_result RTSupportWrapper(void);
+#endif
 
 
 #endif  /* end of sentry #ifdef */
