@@ -710,7 +710,7 @@ void glue_Tick(my_usb_device_t *device)
     }
     device->background_transfer_active = false;
     DEBUGf("going into wire_state, state, status = %x %x\n", softc->transfer_state, device->status);
-    softc->sc_methods->wire_state(softc, device->orig_transferlength - device->curr_transferlength - buffer_used, (usbd_status *)&device->status);
+    softc->sc_methods->wire_state(softc, device->orig_transferlength - device->curr_transferlength - (device->current_pipe->write ? buffer_used : 0), (usbd_status *)&device->status);
     DEBUGf("state, status => %x %x\n", softc->transfer_state, device->status);
     while (softc->transfer_state != TSTATE_IDLE && !device->background_transfer_active)
     {
