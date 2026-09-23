@@ -57,7 +57,8 @@ international-help-file:"Resources:$.Resources.SCSISoftUSB.Messages"
 
 generic-veneers:	module_callback_from_init/module_CallbackFromInit,
                         module_scsi_handler/module_SCSIHandler,
-                        module_tickerv_handler/module_TickerVHandler,
                         module_upcallv_handler/module_UpCallVHandler,
                         module_scsiregister_handler/module_SCSIRegister,
                         module_scsiregister_cb_handler/module_SCSIRegister_cb
+
+vector-handlers:       module_tickerv_handler/module_TickerVHandler

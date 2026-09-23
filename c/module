@@ -964,13 +964,13 @@ _kernel_oserror *module_SCSIHandler(_kernel_swi_regs *r, void *pw)
 * Returns
 *  NULL
 *****************************************************************************/
-_kernel_oserror *module_TickerVHandler(_kernel_swi_regs *r, void *pw)
+int module_TickerVHandler(_kernel_swi_regs *r, void *pw)
 {
   IGNORE(r);
   IGNORE(pw);
   static bool semaphore = false;
   if (semaphore)
-    return NULL;
+    return VECTOR_PASSON;
   semaphore = true;
   my_usb_device_t *device = global_TickerList;
   if(global_CallbackType == callback_RTSupport) /* If we're using TickerV, the RTSupport pollword is kept at 1 so we skip calling glue_BufferThresholdCheck */
@@ -982,7 +982,7 @@ _kernel_oserror *module_TickerVHandler(_kernel_swi_regs *r, void *pw)
     device = next;
   }
   semaphore = false;
-  return NULL;
+  return VECTOR_PASSON;
 }
 /*****************************************************************************
 * module_UpCallVHandler
